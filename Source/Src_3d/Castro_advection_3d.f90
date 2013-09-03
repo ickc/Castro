@@ -136,6 +136,9 @@ contains
     
     type (eos_t) :: eos_state
 
+    !!! external proffortfuncstart, proffortfuncstop
+    call bl_proffortfuncstart("umeth3d")
+
     allocate ( pgdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( pgdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
@@ -566,6 +569,8 @@ contains
     deallocate(Ip,Im)
     deallocate(Ip_g,Im_g)
       
+    call bl_proffortfuncstop("umeth3d")
+
   end subroutine umeth3d
 
 ! ::: 
@@ -620,6 +625,9 @@ contains
     integer          :: n, nq
     integer          :: iadv, ispec, iaux
     double precision :: courx, coury, courz, courmx, courmy, courmz
+
+    !!! external proffortfuncstart, proffortfuncstop
+    call bl_proffortfuncstart("ctoprim")
 
     allocate( dpdrho(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3))
     allocate(   dpde(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3))
@@ -862,6 +870,8 @@ contains
 
     deallocate(dpdrho,dpde)
     
+    call bl_proffortfuncstop("ctoprim")
+
   end subroutine ctoprim
 
 ! ::: 
@@ -915,6 +925,9 @@ contains
 
     double precision :: div1
     integer          :: i, j, k, n
+
+    !!! external proffortfuncstart, proffortfuncstop
+    call bl_proffortfuncstart("consup")
 
     do n = 1, NVAR
          
@@ -1016,6 +1029,8 @@ contains
        endif
          
     enddo
+
+    call bl_proffortfuncstop("consup")
 
   end subroutine consup
 

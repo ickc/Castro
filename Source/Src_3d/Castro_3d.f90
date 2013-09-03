@@ -80,6 +80,9 @@
       double precision dx,dy,dz
       integer ngq,ngf,iflaten
 
+      !!! external proffortfuncstart, proffortfuncstop
+      call bl_proffortfuncstart("ca_umdrv")
+
       allocate(     q(uin_l1:uin_h1,uin_l2:uin_h2,uin_l3:uin_h3,QVAR))
       allocate(  gamc(uin_l1:uin_h1,uin_l2:uin_h2,uin_l3:uin_h3))
       allocate( flatn(uin_l1:uin_h1,uin_l2:uin_h2,uin_l3:uin_h3))
@@ -175,6 +178,8 @@
 
       deallocate(q,gamc,flatn,c,csml,div,srcQ,pdivu)
 
+      call bl_proffortfuncstop("ca_umdrv")
+
       end subroutine ca_umdrv
 
 ! ::
@@ -254,6 +259,9 @@
       integer lratx, lraty, lratz
       double precision   volfrac
 
+      !!! external proffortfuncstart, proffortfuncstop
+      call bl_proffortfuncstart("ca_avgdown")
+
       lratx   = lrat(1)
       lraty   = lrat(2)
       lratz   = lrat(3)
@@ -305,6 +313,8 @@
          !$OMP END PARALLEL DO
 
       enddo
+
+      call bl_proffortfuncstop("ca_avgdown")
 
       end subroutine ca_avgdown
 
