@@ -129,6 +129,8 @@ int          Castro::do_rotation = -1;
 Real         Castro::rotational_period = 0.0;
 #endif
 
+int          Castro::deterministic = 0;
+
 int          Castro::grown_factor = 1;
 int          Castro::star_at_center = -1;
 int          Castro::moving_center = 0;
@@ -143,6 +145,7 @@ int          Castro::ppm_reference = 1;
 int          Castro::ppm_trace_grav = 0;
 int          Castro::ppm_temp_fix = 0;
 int          Castro::ppm_tau_in_tracing = 0;
+int          Castro::ppm_predict_gammae = 0;
 int          Castro::ppm_reference_edge_limit = 1;
 int          Castro::ppm_reference_eigenvectors = 0;
 
@@ -377,6 +380,7 @@ Castro::read_params ()
     pp.query("ppm_trace_grav", ppm_trace_grav);
     pp.query("ppm_temp_fix", ppm_temp_fix);
     pp.query("ppm_tau_in_tracing", ppm_tau_in_tracing);
+    pp.query("ppm_predict_gammae", ppm_predict_gammae);
     pp.query("ppm_reference_edge_limit", ppm_reference_edge_limit);
     pp.query("ppm_flatten_before_integrals", ppm_flatten_before_integrals);
     pp.query("ppm_reference_eigenvectors", ppm_reference_eigenvectors);
@@ -434,6 +438,11 @@ Castro::read_params ()
         BoxLib::Error();
       }
 
+    if (ppm_predict_gammae == 1 && ppm_tau_in_tracing != 1)
+      {
+	std::cerr << "ppm_predict_gammae == 1 needs ppm_tau_in_tracing == 1\n";
+	BoxLib::Error();
+      }
 
     // Make sure not to call refluxing if we're not actually doing any hydro.
     if (do_hydro == 0) do_reflux = 0;
@@ -477,6 +486,8 @@ Castro::read_params ()
       }
 #endif
 #endif
+
+   pp.query("deterministic", deterministic);
 
    pp.query("job_name",job_name);  
 }
@@ -1529,7 +1540,8 @@ Castro::postCoarseTimeStep (Real cumtime)
     // postCoarseTimeStep() is only called by level 0.
     //
 #ifdef PARTICLES
-    ParticleMoveRandom();
+    if (Castro::theDMPC() && particle_move_type == "Random")
+        ParticleMoveRandom();
 #endif
 }
 

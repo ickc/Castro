@@ -261,7 +261,8 @@
                                    allow_negative_energy_in, &
                                    ppm_type_in,ppm_reference_in, &
                                    ppm_trace_grav_in, ppm_temp_fix_in, &
-                                   ppm_tau_in_tracing_in, ppm_reference_edge_limit_in, &
+                                   ppm_tau_in_tracing_in, ppm_predict_gammae_in, &
+                                   ppm_reference_edge_limit_in, &
                                    ppm_flatten_before_integrals_in, &
                                    ppm_reference_eigenvectors_in, &
                                    use_colglaz_in, use_flattening_in, &
@@ -270,7 +271,7 @@
                                    use_pslope_in, &
                                    grav_source_type_in, &
                                    do_sponge_in,normalize_species_in,fix_mass_flux_in,use_sgs, &
-                                   rot_period_in, const_grav_in)
+                                   rot_period_in, const_grav_in, deterministic_in)
 !                                  phys_bc_lo,phys_bc_hi
 
         ! Passing data from C++ into f90
@@ -287,7 +288,8 @@
         integer, intent(in) :: numadv
         integer, intent(in) :: allow_negative_energy_in, ppm_type_in
         integer, intent(in) :: ppm_reference_in, ppm_trace_grav_in, ppm_temp_fix_in
-        integer, intent(in) :: ppm_tau_in_tracing_in, ppm_reference_edge_limit_in
+        integer, intent(in) :: ppm_tau_in_tracing_in, ppm_predict_gammae_in
+        integer, intent(in) :: ppm_reference_edge_limit_in
         integer, intent(in) :: ppm_flatten_before_integrals_in
         integer, intent(in) :: ppm_reference_eigenvectors_in
         integer, intent(in) :: use_colglaz_in, use_flattening_in
@@ -302,6 +304,7 @@
         integer, intent(in) :: fix_mass_flux_in
         integer, intent(in) :: use_sgs
         double precision, intent(in) :: rot_period_in, const_grav_in
+        integer, intent(in) :: deterministic_in
         integer :: iadv, ispec
 
         integer             :: QLAST
@@ -458,6 +461,7 @@
         ppm_trace_grav             = ppm_trace_grav_in
         ppm_temp_fix               = ppm_temp_fix_in
         ppm_tau_in_tracing         = ppm_tau_in_tracing_in
+        ppm_predict_gammae         = ppm_predict_gammae_in
         ppm_reference_edge_limit   = ppm_reference_edge_limit_in
         ppm_flatten_before_integrals = ppm_flatten_before_integrals_in
         ppm_reference_eigenvectors = ppm_reference_eigenvectors_in
@@ -476,7 +480,8 @@
         fix_mass_flux              = fix_mass_flux_in
         rot_period                 = rot_period_in
         const_grav                 = const_grav_in
-        
+        deterministic              = deterministic_in.ne.0
+
 
 !       allocate(outflow_bc_lo(dm))
 !       allocate(outflow_bc_hi(dm))

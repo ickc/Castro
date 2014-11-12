@@ -5,7 +5,7 @@ module advection_module
   private
 
   public umeth3d, ctoprim, divu, consup, enforce_minimum_density, normalize_new_species, &
-       normalize_species_fluxes
+       normalize_species_fluxes, enforce_nonnegative_species
   
 contains
 
@@ -120,20 +120,19 @@ contains
     double precision, allocatable::fyx(:,:,:,:),fyz(:,:,:,:)
     double precision, allocatable::fzx(:,:,:,:),fzy(:,:,:,:)
     
-    double precision, allocatable:: pgdnvx(:,:,:), ugdnvx(:,:,:)
-    double precision, allocatable:: pgdnvxf(:,:,:), ugdnvxf(:,:,:)
-    double precision, allocatable:: pgdnvtmpx(:,:,:), ugdnvtmpx(:,:,:)
+    double precision, allocatable:: pgdnvx(:,:,:), ugdnvx(:,:,:), gegdnvx(:,:,:)
+    double precision, allocatable:: pgdnvxf(:,:,:), ugdnvxf(:,:,:), gegdnvxf(:,:,:)
+    double precision, allocatable:: pgdnvtmpx(:,:,:), ugdnvtmpx(:,:,:), gegdnvtmpx(:,:,:)
     
-    double precision, allocatable:: pgdnvy(:,:,:), ugdnvy(:,:,:)
-    double precision, allocatable:: pgdnvyf(:,:,:), ugdnvyf(:,:,:)
-    double precision, allocatable:: pgdnvtmpy(:,:,:), ugdnvtmpy(:,:,:)
+    double precision, allocatable:: pgdnvy(:,:,:), ugdnvy(:,:,:), gegdnvy(:,:,:)
+    double precision, allocatable:: pgdnvyf(:,:,:), ugdnvyf(:,:,:), gegdnvyf(:,:,:)
+    double precision, allocatable:: pgdnvtmpy(:,:,:), ugdnvtmpy(:,:,:), gegdnvtmpy(:,:,:)
     
-    double precision, allocatable:: pgdnvz(:,:,:), ugdnvz(:,:,:)
-    double precision, allocatable:: pgdnvtmpz1(:,:,:), ugdnvtmpz1(:,:,:)
-    double precision, allocatable:: pgdnvtmpz2(:,:,:), ugdnvtmpz2(:,:,:)
+    double precision, allocatable:: pgdnvz(:,:,:), ugdnvz(:,:,:), gegdnvz(:,:,:)
+    double precision, allocatable:: pgdnvzf(:,:,:), ugdnvzf(:,:,:), gegdnvzf(:,:,:)
+    double precision, allocatable:: pgdnvtmpz1(:,:,:), ugdnvtmpz1(:,:,:), gegdnvtmpz1(:,:,:)
+    double precision, allocatable:: pgdnvtmpz2(:,:,:), ugdnvtmpz2(:,:,:), gegdnvtmpz2(:,:,:)
     
-    double precision, allocatable:: pgdnvzf(:,:,:), ugdnvzf(:,:,:)
-
     double precision, allocatable:: Ip(:,:,:,:,:,:), Im(:,:,:,:,:,:)
     double precision, allocatable:: Ip_g(:,:,:,:,:,:), Im_g(:,:,:,:,:,:)
     double precision, allocatable:: Ip_gc(:,:,:,:,:,:), Im_gc(:,:,:,:,:,:)
@@ -145,26 +144,43 @@ contains
 
     allocate ( pgdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
     allocate ( pgdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
     allocate ( pgdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     
     allocate ( pgdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( gegdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
     allocate ( pgdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
     allocate ( pgdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
 
     allocate ( pgdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( pgdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( pgdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
     allocate ( pgdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     allocate ( ugdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
+    allocate ( pgdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+
+    allocate ( pgdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
     
     allocate ( dqx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
     allocate ( dqy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
@@ -324,9 +340,8 @@ contains
           call tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            Ip,Im,Ip_g,Im_g,Ip_gc,Im_gc, &
                            qxm,qxp,qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
                            gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                           ilo1,ilo2,ihi1,ihi2,dx,dy,dt,kc,k3d)
+                           ilo1,ilo2,ihi1,ihi2,dt,kc,k3d)
 
        else
 
@@ -354,42 +369,42 @@ contains
        ! Compute \tilde{F}^x at kc (k3d)
        call cmpflx(qxm,qxp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                   ugdnvx,pgdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                   ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    1,ilo1,ihi1+1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
        ! Compute \tilde{F}^y at kc (k3d)
        call cmpflx(qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                   ugdnvy,pgdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                   ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    2,ilo1-1,ihi1+1,ilo2,ihi2+1,kc,kc,k3d,domlo,domhi)
        
        ! Compute U'^y_x at kc (k3d)
        call transy1(qxm,qmxy,qxp,qpxy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                     fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                    ugdnvy,pgdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                    ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                     gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                     cdtdy,ilo1-1,ihi1+1,ilo2,ihi2,kc,k3d)
 
        ! Compute U'^x_y at kc (k3d)
        call transx1(qym,qmyx,qyp,qpyx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                     fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                    ugdnvx,pgdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                    ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                     gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                     cdtdx,ilo1,ihi1,ilo2-1,ihi2+1,kc,k3d)
 
        ! Compute F^{x|y} at kc (k3d)
        call cmpflx(qmxy,qpxy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    fxy,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                   ugdnvtmpx,pgdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                   ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    1,ilo1,ihi1+1,ilo2,ihi2,kc,kc,k3d,domlo,domhi)
 
        ! Compute F^{y|x} at kc (k3d)
        call cmpflx(qmyx,qpyx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    fyx,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                   ugdnvtmpy,pgdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                   ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    2,ilo1,ihi1,ilo2,ihi2+1,kc,kc,k3d,domlo,domhi)
 
@@ -400,9 +415,8 @@ contains
              call tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              Ip,Im,Ip_g,Im_g,Ip_gc,Im_gc, &
                              qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                             grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
                              gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                             ilo1,ilo2,ihi1,ihi2,dz,dt,km,kc,k3d)
+                             ilo1,ilo2,ihi1,ihi2,dt,km,kc,k3d)
           else
              call tracez(q,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          dqz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
@@ -413,35 +427,35 @@ contains
           ! Compute \tilde{F}^z at kc (k3d)
           call cmpflx(qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       fz,ilo1-1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                      ugdnvz,pgdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                      ugdnvz,pgdnvz,gegdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       3,ilo1-1,ihi1+1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
           ! Compute U'^y_z at kc (k3d)
           call transy2(qzm,qmzy,qzp,qpzy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                       ugdnvy,pgdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                       ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        cdtdy,ilo1-1,ihi1+1,ilo2,ihi2,kc,km,k3d)
 
           ! Compute U'^x_z at kc (k3d)
           call transx2(qzm,qmzx,qzp,qpzx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                       ugdnvx,pgdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                       ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        cdtdx,ilo1,ihi1,ilo2-1,ihi2+1,kc,km,k3d)
 
           ! Compute F^{z|x} at kc (k3d)
           call cmpflx(qmzx,qpzx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       fzx,ilo1,ilo2-1,1,ihi1,ihi2+1,2, &
-                      ugdnvtmpz1,pgdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                      ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       3,ilo1,ihi1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
           ! Compute F^{z|y} at kc (k3d)
           call cmpflx(qmzy,qpzy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       fzy,ilo1-1,ilo2,1,ihi1+1,ihi2,2, &
-                      ugdnvtmpz2,pgdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                      ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       3,ilo1-1,ihi1+1,ilo2,ihi2,kc,kc,k3d,domlo,domhi)
           
@@ -449,8 +463,8 @@ contains
           call transxy(qzm,qzl,qzp,qzr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        fxy,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
                        fyx,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                       ugdnvtmpx,pgdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       ugdnvtmpy,pgdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                       ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                       ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                        grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -459,7 +473,7 @@ contains
           ! Compute F^z at kc (k3d) -- note that flux3 is indexed by k3d, not kc
           call cmpflx(qzl,qzr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       flux3,fd3_l1,fd3_l2,fd3_l3,fd3_h1,fd3_h2,fd3_h3, &
-                      ugdnvzf,pgdnvzf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                      ugdnvzf,pgdnvzf,gegdnvzf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       3,ilo1,ihi1,ilo2,ihi2,kc,k3d,k3d,domlo,domhi)
 
@@ -485,21 +499,21 @@ contains
              call transz(qxm,qmxz,qxp,qpxz, &
                          qym,qmyz,qyp,qpyz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          fz,ilo1-1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                         ugdnvz,pgdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         ugdnvz,pgdnvz,gegdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          cdtdz,ilo1-1,ihi1+1,ilo2-1,ihi2+1,km,kc,k3d)
          
              ! Compute F^{x|z} at km (k3d-1)
              call cmpflx(qmxz,qpxz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          fxz,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                         ugdnvx,pgdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          1,ilo1,ihi1+1,ilo2-1,ihi2+1,km,km,k3d-1,domlo,domhi)
 
              ! Compute F^{y|z} at km (k3d-1)
              call cmpflx(qmyz,qpyz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          fyz,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                         ugdnvy,pgdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          2,ilo1-1,ihi1+1,ilo2,ihi2+1,km,km,k3d-1,domlo,domhi)
 
@@ -507,8 +521,8 @@ contains
              call transyz(qxm,qxl,qxp,qxr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           fyz,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
                           fzy,ilo1-1,ilo2,1,ihi1+1,ihi2,2, &
-                          ugdnvy,pgdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          ugdnvtmpz2,pgdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                          ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                          ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                           srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -518,8 +532,8 @@ contains
              call transxz(qym,qyl,qyp,qyr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           fxz,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
                           fzx,ilo1,ilo2-1,1,ihi1,ihi2+1,2, &
-                          ugdnvx,pgdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          ugdnvtmpz1,pgdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                          ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                          ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                           srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -528,7 +542,7 @@ contains
              ! Compute F^x at km (k3d-1)
              call cmpflx(qxl,qxr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          flux1,fd1_l1,fd1_l2,fd1_l3,fd1_h1,fd1_h2,fd1_h3, &
-                         ugdnvxf,pgdnvxf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         ugdnvxf,pgdnvxf,gegdnvxf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          1,ilo1,ihi1+1,ilo2,ihi2,km,k3d-1,k3d-1,domlo,domhi)
              
@@ -541,7 +555,7 @@ contains
              ! Compute F^y at km (k3d-1)
              call cmpflx(qyl,qyr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          flux2,fd2_l1,fd2_l2,fd2_l3,fd2_h1,fd2_h2,fd2_h3, &
-                         ugdnvyf,pgdnvyf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         ugdnvyf,pgdnvyf,gegdnvyf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          2,ilo1,ihi1,ilo2,ihi2+1,km,k3d-1,k3d-1,domlo,domhi)
 
@@ -566,16 +580,16 @@ contains
     enddo
 
     ! Deallocate arrays
-    deallocate(pgdnvx,ugdnvx)
-    deallocate(pgdnvxf,ugdnvxf)
-    deallocate(pgdnvtmpx,ugdnvtmpx)
-    deallocate(pgdnvy,ugdnvy)
-    deallocate(pgdnvyf,ugdnvyf)
-    deallocate(pgdnvtmpy,ugdnvtmpy)
-    deallocate(pgdnvz,ugdnvz)
-    deallocate(pgdnvtmpz1,ugdnvtmpz1)
-    deallocate(pgdnvtmpz2,ugdnvtmpz2)
-    deallocate(pgdnvzf,ugdnvzf)
+    deallocate(pgdnvx,ugdnvx,gegdnvx)
+    deallocate(pgdnvxf,ugdnvxf,gegdnvxf)
+    deallocate(pgdnvtmpx,ugdnvtmpx,gegdnvtmpx)
+    deallocate(pgdnvy,ugdnvy,gegdnvy)
+    deallocate(pgdnvyf,ugdnvyf,gegdnvyf)
+    deallocate(pgdnvtmpy,ugdnvtmpy,gegdnvtmpy)
+    deallocate(pgdnvz,ugdnvz,gegdnvz)
+    deallocate(pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1)
+    deallocate(pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2)
+    deallocate(pgdnvzf,ugdnvzf,gegdnvzf)
     deallocate(dqx,dqy,dqz)
     deallocate(qxm,qxp)
     deallocate(qmxy,qpxy)
@@ -639,7 +653,7 @@ contains
     double precision :: csml(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
     double precision :: flatn(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
     double precision ::  src(src_l1:src_h1,src_l2:src_h2,src_l3:src_h3,NVAR)
-    double precision :: srcQ(src_l1:src_h1,src_l2:src_h2,src_l3:src_h3,QVAR)
+    double precision :: srcQ(lo(1)-1:hi(1)+1,lo(2)-1:hi(2)+1,lo(3)-1:hi(3)+1,QVAR)
     double precision :: dx, dy, dz, dt, courno
 
     double precision, allocatable:: dpdrho(:,:,:)
@@ -667,7 +681,6 @@ contains
     ! Make q (all but p), except put e in slot for rho.e, fix after eos call.
     ! The temperature is used as an initial guess for the eos call and will be overwritten.
     !
-    !$OMP PARALLEL DO PRIVATE(i,j,k)
     do k = loq(3),hiq(3)
        do j = loq(2),hiq(2)
           do i = loq(1),hiq(1)
@@ -694,10 +707,8 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
 
     ! Load advected quatities, c, into q, assuming they arrived in uin as rho.c
-    !$OMP PARALLEL DO PRIVATE(iadv,n,nq,i,j,k) IF(nadv.gt.1)
     do iadv = 1, nadv
        n = UFA + iadv - 1
        nq = QFA + iadv - 1
@@ -709,10 +720,8 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
       
     ! Load chemical species, c, into q, assuming they arrived in uin as rho.c
-    !$OMP PARALLEL DO PRIVATE(ispec,n,nq,i,j,k) IF(nspec.gt.1)
     do ispec = 1, nspec
        n  = UFS + ispec - 1
        nq = QFS + ispec - 1
@@ -724,10 +733,8 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
       
     ! Load auxiliary variables which are needed in the EOS
-    !$OMP PARALLEL DO PRIVATE(iaux,n,nq,i,j,k) IF(naux.gt.1)
     do iaux = 1, naux
        n  = UFX + iaux - 1
        nq = QFX + iaux - 1
@@ -739,10 +746,8 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
 
     ! Get gamc, p, T, c, csml using q state
-    !$OMP PARALLEL DO PRIVATE(i,j,k,eos_state,pt_index)
     do k = loq(3), hiq(3)
        do j = loq(2), hiq(2)
           do i = loq(1), hiq(1)
@@ -797,10 +802,8 @@ contains
           end do
        end do
     end do
-    !$OMP END PARALLEL DO
 
     ! compute srcQ terms
-    !$OMP PARALLEL DO PRIVATE(i,j,k,ispec,iaux,iadv)
     do k = lo(3)-1, hi(3)+1
        do j = lo(2)-1, hi(2)+1
           do i = lo(1)-1, hi(1)+1
@@ -842,13 +845,11 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
 
     ! Compute running max of Courant number over grids
     courmx = courno
     courmy = courno
     courmz = courno
-    !$OMP PARALLEL DO PRIVATE(i,j,k,courx,coury,courz) REDUCTION(max:courmx,courmy,courmz)
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
@@ -891,7 +892,6 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
 
     courno = max( courmx, courmy, courmz )
 
@@ -983,8 +983,6 @@ contains
           
        else
 
-          !$OMP PARALLEL PRIVATE(i,j,k,div1)
-          !$OMP DO
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)+1
@@ -995,8 +993,7 @@ contains
                 enddo
              enddo
           enddo
-          !$OMP END DO NOWAIT
-          !$OMP DO
+
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)+1
                 do i = lo(1),hi(1)
@@ -1007,8 +1004,7 @@ contains
                 enddo
              enddo
           enddo
-          !$OMP END DO NOWAIT
-          !$OMP DO
+
           do k = lo(3),hi(3)+1
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)
@@ -1019,8 +1015,6 @@ contains
                 enddo
              enddo
           enddo
-          !$OMP END DO
-          !$OMP END PARALLEL
           
        endif
 
@@ -1046,7 +1040,6 @@ contains
           enddo
        else 
           ! update everything else with fluxes and source terms
-          !$OMP PARALLEL DO PRIVATE(i,j,k)
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)
@@ -1069,7 +1062,6 @@ contains
                 enddo
              enddo
           enddo
-          !$OMP END PARALLEL DO
        endif
          
     enddo
@@ -1100,7 +1092,6 @@ contains
     integer          :: i, j, k
     double precision :: ux, vy, wz
 
-    !$OMP PARALLEL DO PRIVATE(i,j,k,ux,vy,wz)
     do k=lo(3),hi(3)+1
        do j=lo(2),hi(2)+1
           do i=lo(1),hi(1)+1
@@ -1128,7 +1119,6 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
     
   end subroutine divu
 
@@ -1162,9 +1152,6 @@ contains
     integer          :: i,j,k,n
     double precision :: sum,fac
     
-    !$OMP PARALLEL PRIVATE(i,j,k,sum,n,fac)
-
-    !$OMP DO
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)+1
@@ -1183,9 +1170,7 @@ contains
           end do
        end do
     end do
-    !$OMP END DO NOWAIT
-    
-    !$OMP DO
+
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)+1
           do i = lo(1),hi(1)
@@ -1204,9 +1189,7 @@ contains
           end do
        end do
     end do
-    !$OMP END DO NOWAIT
-    
-    !$OMP DO
+
     do k = lo(3),hi(3)+1
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
@@ -1225,9 +1208,6 @@ contains
           end do
        end do
     end do
-    !$OMP END DO
-    
-    !$OMP END PARALLEL
 
   end subroutine normalize_species_fluxes
 
@@ -1276,7 +1256,6 @@ contains
 
     min_dens = ZERO
 
-    !$OMP PARALLEL DO PRIVATE(i,j,k,ii,jj,kk,min_dens) reduction(+:initial_mass,initial_eint,initial_eden)
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
@@ -1328,9 +1307,7 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
-    
-    !$OMP PARALLEL DO PRIVATE(i,j,k,n) reduction(+:final_mass,final_eint,final_eden)
+
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
@@ -1363,7 +1340,6 @@ contains
           enddo
        enddo
     enddo
-    !$OMP END PARALLEL DO
     
     ! When enabled with OpenMP sometimes there is a small numerical error
     ! in (final_mass - initial_mass) even if no cells have been reset.
@@ -1378,6 +1354,113 @@ contains
     deallocate(fac)
     
   end subroutine enforce_minimum_density
+
+! :::
+! ::: ------------------------------------------------------------------
+! :::
+
+  subroutine enforce_nonnegative_species(uout,uout_l1,uout_l2,uout_l3, &
+       uout_h1,uout_h2,uout_h3,lo,hi)
+    
+    use network, only : nspec
+    use meth_params_module, only : NVAR, URHO, UFS
+    use bl_constants_module
+    
+    implicit none
+    
+    integer          :: lo(3), hi(3)
+    integer          :: uout_l1, uout_l2, uout_l3, uout_h1, uout_h2, uout_h3
+    double precision :: uout(uout_l1:uout_h1,uout_l2:uout_h2,uout_l3:uout_h3,NVAR)
+    
+    ! Local variables
+    integer          :: i,j,k,n
+    integer          :: int_dom_spec
+    logical          :: any_negative
+    double precision :: dom_spec,x
+    
+    double precision, parameter :: eps = -1.0d-16
+  
+    do k = lo(3),hi(3)
+       do j = lo(2),hi(2)
+          do i = lo(1),hi(1)
+             
+             any_negative = .false.
+             !
+             ! First deal with tiny undershoots by just setting them to zero.
+             !
+             do n = UFS, UFS+nspec-1
+                if (uout(i,j,k,n) .lt. ZERO) then
+                   x = uout(i,j,k,n)/uout(i,j,k,URHO)
+                   if (x .gt. eps) then
+                      uout(i,j,k,n) = ZERO
+                   else
+                      any_negative = .true.
+                   end if
+                end if
+             end do
+             !
+             ! We know there are one or more undershoots needing correction.
+             !
+             if (any_negative) then
+                !
+                ! Find the dominant species.
+                !
+                int_dom_spec = UFS
+                dom_spec     = uout(i,j,k,int_dom_spec)
+                
+                do n = UFS,UFS+nspec-1
+                   if (uout(i,j,k,n) .gt. dom_spec) then
+                      dom_spec     = uout(i,j,k,n)
+                      int_dom_spec = n
+                   end if
+                end do
+                !
+                ! Now take care of undershoots greater in magnitude than 1e-16.
+                !
+                do n = UFS, UFS+nspec-1
+                   
+                   if (uout(i,j,k,n) .lt. ZERO) then
+                      
+                      x = uout(i,j,k,n)/uout(i,j,k,URHO)
+                      !
+                      ! Here we only print the bigger negative values.
+                      !
+                      if (x .lt. -1.d-2) then
+                         print *,'Correcting nth negative species ',n-UFS+1
+                         print *,'   at cell (i,j,k)              ',i,j,k
+                         print *,'Negative (rho*X) is             ',uout(i,j,k,n)
+                         print *,'Negative      X  is             ',x
+                         print *,'Filling from dominant species   ',int_dom_spec-UFS+1
+                         print *,'  which had X =                 ',&
+                              uout(i,j,k,int_dom_spec) / uout(i,j,k,URHO)
+                      end if
+                      !
+                      ! Take enough from the dominant species to fill the negative one.
+                      !
+                      uout(i,j,k,int_dom_spec) = uout(i,j,k,int_dom_spec) + uout(i,j,k,n)
+                      !
+                      ! Test that we didn't make the dominant species negative.
+                      !
+                      if (uout(i,j,k,int_dom_spec) .lt. ZERO) then 
+                         print *,' Just made nth dominant species negative ',int_dom_spec-UFS+1,' at ',i,j,k 
+                         print *,'We were fixing species ',n-UFS+1,' which had value ',x
+                         print *,'Dominant species became ',uout(i,j,k,int_dom_spec) / uout(i,j,k,URHO)
+                         call bl_error("Error:: Castro_3d.f90 :: ca_enforce_nonnegative_species")
+                      end if
+                      !
+                      ! Now set the negative species to zero.
+                      !
+                      uout(i,j,k,n) = ZERO
+                      
+                   end if
+                   
+                enddo
+             end if
+          enddo
+       enddo
+    enddo
+
+  end subroutine enforce_nonnegative_species
 
 ! :::
 ! ::: ------------------------------------------------------------------
@@ -1399,7 +1482,6 @@ contains
     integer          :: i,j,k,n
     double precision :: fac,sum
     
-    !$OMP PARALLEL DO PRIVATE(i,j,k,sum,n,fac)
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
@@ -1418,7 +1500,6 @@ contains
           end do
        end do
     end do
-    !$OMP END PARALLEL DO
     
   end subroutine normalize_new_species
 

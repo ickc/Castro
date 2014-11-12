@@ -208,7 +208,8 @@ Castro::variableSetUp ()
         (dm, Density, Xmom, Eden, Eint, Temp, FirstAdv, FirstSpec, FirstAux, 
          NumAdv, difmag, small_dens, small_temp, small_pres, 
          allow_negative_energy,ppm_type,ppm_reference,
-	 ppm_trace_grav,ppm_temp_fix,ppm_tau_in_tracing,ppm_reference_edge_limit,
+	 ppm_trace_grav,ppm_temp_fix,ppm_tau_in_tracing,ppm_predict_gammae,
+	 ppm_reference_edge_limit,
 	 ppm_flatten_before_integrals,
 	 ppm_reference_eigenvectors,
 	 use_colglaz, use_flattening, 
@@ -217,7 +218,7 @@ Castro::variableSetUp ()
          use_pslope, 
 	 grav_source_type, do_sponge,
          normalize_species,fix_mass_flux,use_sgs,rotational_period,
-	 const_grav);
+	 const_grav, deterministic);
 
     Real run_stop = ParallelDescriptor::second() - run_strt;
  
