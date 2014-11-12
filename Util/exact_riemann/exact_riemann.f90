@@ -7,6 +7,7 @@ program riemann_exact
   use network, only: nspec
   use probin_module, only: rho_l, u_l, p_l, T_l, rho_r, u_r, p_r, T_r, &
                            xmin, xmax, xjump, t, npts, use_Tinit
+  use extern_probin_module, only: use_eos_coulomb
   use riemann_support
   use runtime_init_module
   use riemann_sample_module
@@ -29,10 +30,11 @@ program riemann_exact
 
   ! general Maestro initializations
   call runtime_init()
+  print *, 'use_eos_coulomb = ', use_eos_coulomb
 
   ! microphysics
   call network_init()
-  call eos_init(gamma_in=1.4d0)
+  call eos_init()  !gamma_in=1.4d0)
 
   ! we need a composition to interface with our EOS, but we are not
   ! exploring composition jumps here.  We'll take a constant

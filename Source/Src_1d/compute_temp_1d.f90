@@ -2,8 +2,9 @@
 
       use network, only : nspec, naux
       use eos_module
-      use meth_params_module, only : NVAR, URHO, UMX, UEINT, UTEMP, UFS, UFX, &
+      use meth_params_module, only : NVAR, URHO, UMX, UEINT, UEDEN, UTEMP, UFS, UFX, &
                                      small_temp, allow_negative_energy
+      use bl_constants_module
 
       implicit none
       integer         , intent(in   ) :: lo(1),hi(1)
@@ -13,10 +14,11 @@
       integer          :: i
       integer          :: pt_index(1)
       double precision :: eint,xn(nspec+naux)
-      double precision :: dummy_gam,dummy_pres,dummy_c,dummy_dpdr,dummy_dpde
+
+      type (eos_t) :: eos_state
 
       do i = lo(1),hi(1)
-        if (state(i,URHO) <= 0.d0) then
+        if (state(i,URHO) <= ZERO) then
            print *,'   '
            print *,'>>> Error: Castro_1d::compute_temp ',i
            print *,'>>> ... negative density ',state(i,URHO)
@@ -26,7 +28,7 @@
 
       if (allow_negative_energy.eq.0) then
          do i = lo(1),hi(1)
-            if (state(i,UEINT) <= 0.d0) then
+            if (state(i,UEINT) <= ZERO) then
                 print *,'   '
                 print *,'>>> Warning: Castro_1d::compute_temp ',i
                 print *,'>>> ... (rho e) is negative '
@@ -37,16 +39,24 @@
 
       do i = lo(1),hi(1)
 
-         xn(1:nspec)  = state(i,UFS:UFS+nspec-1) / state(i,URHO)
-         if (naux > 0) &
-           xn(nspec+1:nspec+naux) = state(i,UFX:UFX+naux-1) / state(i,URHO)
+         eos_state % rho = state(i,URHO)
+         eos_state % e   = state(i,UEINT) / state(i,URHO)
+         eos_state % xn  = state(i,UFS:UFS+nspec-1) / state(i,URHO)
+         eos_state % aux = state(i,UFX:UFX+naux-1) / state(i,URHO)
 
-         eint = state(i,UEINT) / state(i,URHO)
+         ! initial guess for iterations
+         eos_state % T = state(i,UTEMP) 
 
          pt_index(1) = i
 
-         call eos_given_ReX(dummy_gam, dummy_pres , dummy_c, state(i,UTEMP), &
-                            dummy_dpdr, dummy_dpde, state(i,URHO), eint, xn, pt_index=pt_index)
+         call eos(eos_input_re, eos_state, pt_index = pt_index)
+
+         state(i,UTEMP) = eos_state % T
+
+         ! Reset energy in case we floored
+
+         state(i,UEINT) = state(i,URHO) * eos_state % e
+         state(i,UEDEN) = state(i,UEINT) + HALF * (state(i,UMX)**2) / state(i,URHO)
 
       enddo
 

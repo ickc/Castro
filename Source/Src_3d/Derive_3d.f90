@@ -298,6 +298,7 @@
       !
       ! This routine will derive the radial velocity.
       !
+      use bl_constants_module
       use probdata_module, only : center
 
       implicit none
@@ -317,11 +318,11 @@
 
       !$OMP PARALLEL DO PRIVATE(i,j,k,x,y,z,r)
       do k = lo(3), hi(3)
-         z = xlo(3) + (dble(k-lo(3))+0.5d0) * delta(3) - center(3)
+         z = xlo(3) + (dble(k-lo(3))+HALF) * delta(3) - center(3)
          do j = lo(2), hi(2)
-            y = xlo(2) + (dble(j-lo(2))+0.5d0) * delta(2) - center(2)
+            y = xlo(2) + (dble(j-lo(2))+HALF) * delta(2) - center(2)
             do i = lo(1), hi(1)
-               x = xlo(1) + (dble(i-lo(1))+0.5d0) * delta(1) - center(1)
+               x = xlo(1) + (dble(i-lo(1))+HALF) * delta(1) - center(1)
                r = sqrt(x*x+y*y+z*z)
                radvel(i,j,k,1) = ( dat(i,j,k,2)*x + &
                                    dat(i,j,k,3)*y + &
@@ -375,8 +376,10 @@
 
       use network, only : nspec, naux
       use eos_module
+      use eos_type_module
       use meth_params_module, only : URHO, UEINT, UTEMP, UFS, UFX, &
                                      allow_negative_energy
+      use bl_constants_module
 
       implicit none
 
@@ -388,34 +391,34 @@
       double precision dx(3), xlo(3), time, dt
       integer bc(3,2,ncomp_u), level, grid_no
 
-      double precision :: e, gamc, c, T, dpdr, dpde, Y(nspec+naux), rhoInv
-      integer          :: i,j,k,n
+      double precision :: rhoInv
+      integer          :: i,j,k
+
+      type (eos_t) :: eos_state
       !
       ! Compute pressure from the EOS
       !
-      !$OMP PARALLEL DO PRIVATE(i,j,k,n,e,gamc,c,T,dpdr,dpde,Y,rhoInv)
+      !$OMP PARALLEL DO PRIVATE(i,j,k,rhoInv,eos_state)
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               rhoInv = 1.d0/u(i,j,k,URHO)
-               e  = u(i,j,k,UEINT)*rhoInv
-               T  = u(i,j,k,UTEMP)
-               do n = 1,nspec
-                  Y(n)=u(i,j,k,UFS+n-1)*rhoInv
-               enddo
-               do n = 1,naux
-                  Y(nspec+n)=u(i,j,k,UFX+n-1)*rhoInv
-               enddo
+               rhoInv = ONE / u(i,j,k,URHO)
+
+               eos_state % xn  = u(i,j,k,UFS:UFS+nspec-1) * rhoInv
+               eos_state % aux = u(i,j,k,UFX:UFX+naux-1) * rhoInv
+               eos_state % rho = u(i,j,k,URHO)
+               eos_state % T   = u(i,j,k,UTEMP)
+               eos_state % e   = u(i,j,k,UEINT) * rhoInv
                !
                ! Protect against negative internal energy.
                !
-               if (allow_negative_energy .eq. 0 .and. e .le. 0.d0) then
-                  call eos_given_RTX(e, p(i,j,k,1), u(i,j,k,URHO), T, Y)
+               if (allow_negative_energy .eq. 0 .and. eos_state % e .le. ZERO) then
+                  call eos(eos_input_rt, eos_state, .false.)
                else
-                  call eos_given_ReX(gamc, p(i,j,k,1), c, T, dpdr, dpde, &
-                                     u(i,j,k,URHO), e, Y)
+                  call eos(eos_input_re, eos_state, .false.)
                end if
 
+               p(i,j,k,1) = eos_state % p
             enddo
          enddo
       enddo
@@ -429,6 +432,7 @@
            u,u_l1,u_l2,u_l3,u_h1,u_h2,u_h3,ncomp_u,lo,hi,domlo, &
            domhi,dx,xlo,time,dt,bc,level,grid_no)
 
+      use bl_constants_module
       use meth_params_module, only : URHO, UMX, UMY, UMZ, UEDEN 
 
       implicit none
@@ -450,11 +454,11 @@
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               rhoInv = 1.d0/u(i,j,k,URHO)
+               rhoInv = ONE/u(i,j,k,URHO)
                ux = u(i,j,k,UMX)*rhoInv
                uy = u(i,j,k,UMY)*rhoInv
                uz = u(i,j,k,UMZ)*rhoInv
-               e(i,j,k,1) = u(i,j,k,UEDEN)*rhoInv-0.5d0*(ux**2+uy**2+uz**2)
+               e(i,j,k,1) = u(i,j,k,UEDEN)*rhoInv-HALF*(ux**2+uy**2+uz**2)
             enddo
          enddo
       enddo
@@ -504,8 +508,11 @@
 
       use network, only : nspec, naux
       use eos_module
+      use eos_type_module
       use meth_params_module, only : URHO, UEINT, UTEMP, UFS, UFX, &
                                      allow_negative_energy
+      use bl_constants_module
+
       implicit none
 
       integer c_l1,c_l2,c_l3,c_h1,c_h2,c_h3,ncomp_c
@@ -516,30 +523,34 @@
       double precision dx(3), xlo(3), time, dt
       integer bc(3,2,ncomp_u), level, grid_no
 
-      double precision :: e, gamc, p, T, dpdr, dpde, Y(nspec+naux), rhoInv
-      integer          :: i,j,k,n
+      double precision :: rhoInv
+      integer          :: i,j,k
 
-      c = 0.d0
+      type (eos_t) :: eos_state
+
+      c = ZERO
       !
       ! Compute soundspeed from the EOS.
       !
-      !$OMP PARALLEL DO PRIVATE(i,j,k,n,e,gamc,p,T,dpdr,dpde,Y,rhoInv)
+      !$OMP PARALLEL DO PRIVATE(i,j,k,rhoInv,eos_state)
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               rhoInv = 1.d0/u(i,j,k,URHO)
-               e  = u(i,j,k,UEINT)*rhoInv
-               T  = u(i,j,k,UTEMP)
-               do n = 1,nspec
-                  Y(n)=u(i,j,k,UFS+n-1)*rhoInv
-               enddo
-               do n = 1,naux
-                  Y(nspec+n)=u(i,j,k,UFX+n-1)*rhoInv
-               enddo
+               rhoInv = ONE / u(i,j,k,URHO)
+              
+               eos_state % e = u(i,j,k,UEINT) * rhoInv
 
-               if (allow_negative_energy .eq. 1 .or. e .gt. 0.d0) then
-                  call eos_given_ReX(gamc, p, c(i,j,k,1), T, dpdr, dpde, &
-                                     u(i,j,k,URHO), e, Y)
+               if (allow_negative_energy .eq. 1 .or. eos_state % e .gt. ZERO) then
+
+                  eos_state % xn  = u(i,j,k,UFS:UFS+nspec-1) * rhoInv
+                  eos_state % aux = u(i,j,k,UFX:UFX+naux-1) * rhoInv
+                  eos_state % rho = u(i,j,k,URHO) 
+                  eos_state % T   = u(i,j,k,UTEMP)
+
+                  call eos(eos_input_re, eos_state, .false.)
+
+                  c(i,j,k,1) = eos_state % cs
+
                end if
 
             enddo
@@ -557,8 +568,11 @@
 
       use network, only : nspec, naux
       use eos_module
+      use eos_type_module
       use meth_params_module, only : URHO, UMX, UMY, UMZ, UEINT, UTEMP, UFS, UFX, &
                                      allow_negative_energy
+      use bl_constants_module
+
       implicit none
 
       integer          :: mach_l1,mach_l2,mach_l3,mach_h1,mach_h2,mach_h3,ncomp_mach
@@ -569,33 +583,34 @@
       double precision :: dx(3), xlo(3), time, dt
       integer          :: bc(3,2,ncomp_u), level, grid_no
 
-      double precision :: c, e, gamc, p, T, dpdr, dpde, Y(nspec+naux), rhoInv,ux,uy,uz
-      integer          :: i,j,k,n
+      double precision :: rhoInv,ux,uy,uz
+      integer          :: i,j,k
 
-      mach = 0.d0
+      type (eos_t) :: eos_state
+
+      mach = ZERO
       !
       ! Compute Mach number of the flow.
       !
-      !$OMP PARALLEL DO PRIVATE(i,j,k,n,c,e,gamc,p,T,dpdr,dpde,Y,rhoInv,ux,uy,uz)
+      !$OMP PARALLEL DO PRIVATE(i,j,k,rhoInv,ux,uy,uz,eos_state)
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               rhoInv = 1.d0/u(i,j,k,URHO)
-               ux = u(i,j,k,UMX)*rhoInv
-               uy = u(i,j,k,UMY)*rhoInv
-               uz = u(i,j,k,UMZ)*rhoInv
-               e  = u(i,j,k,UEINT)*rhoInv
-               T  = u(i,j,k,UTEMP)
-               do n = 1,nspec
-                  Y(n)=u(i,j,k,UFS+n-1)*rhoInv
-               enddo
-               do n = 1,naux
-                  Y(nspec+n)=u(i,j,k,UFX+n-1)*rhoInv
-               enddo
+               rhoInv = ONE / u(i,j,k,URHO)
 
-               if (allow_negative_energy .eq. 1 .or. e .gt. 0.d0) then
-                  call eos_given_ReX(gamc, p, c, T, dpdr, dpde, u(i,j,k,URHO), e, Y)
-                  mach(i,j,k,1) = sqrt(ux**2 + uy**2 + uz**2) / c
+               eos_state % e = u(i,j,k,UEINT) * rhoInv
+
+               if (allow_negative_energy .eq. 1 .or. eos_state % e .gt. ZERO) then
+                  ux = u(i,j,k,UMX) * rhoInv
+                  uy = u(i,j,k,UMY) * rhoInv
+                  uz = u(i,j,k,UMZ) * rhoInv
+                  eos_state % rho = u(i,j,k,URHO)
+                  eos_state % T   = u(i,j,k,UTEMP)
+                  eos_state % xn  = u(i,j,k,UFS:UFS+nspec-1) * rhoInv
+                  eos_state % aux = u(i,j,k,UFX:UFX+naux-1) * rhoInv
+
+                  call eos(eos_input_re, eos_state, .false.)
+                  mach(i,j,k,1) = sqrt(ux**2 + uy**2 + uz**2) / eos_state % cs
                end if
 
             enddo
@@ -613,8 +628,11 @@
 
       use network, only : nspec, naux
       use eos_module
+      use eos_type_module
       use meth_params_module, only : URHO, UMX, UMY, UMZ, UEINT, UTEMP, UFS, UFX, &
                                      allow_negative_energy
+      use bl_constants_module
+
       implicit none
 
       integer s_l1,s_l2,s_l3,s_h1,s_h2,s_h3,ncomp_s
@@ -625,32 +643,31 @@
       double precision dx(3), xlo(3), time, dt
       integer bc(3,2,ncomp_u), level, grid_no
 
-      double precision :: e, gamc, T, Y(nspec+naux), rhoInv,ux,uy,uz
-      integer i,j,k,n
+      double precision :: rhoInv
+      integer i,j,k
 
-      s = 0.d0
+      type (eos_t) :: eos_state
+
+      s = ZERO
       !
       ! Compute entropy from the EOS.
       !
-      !$OMP PARALLEL DO PRIVATE(i,j,k,n,e,gamc,T,Y,rhoInv,ux,uy,uz)
+      !$OMP PARALLEL DO PRIVATE(i,j,k,rhoInv,eos_state)
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               rhoInv = 1.d0/u(i,j,k,URHO)
-               ux = u(i,j,k,UMX)*rhoInv
-               uy = u(i,j,k,UMY)*rhoInv
-               uz = u(i,j,k,UMZ)*rhoInv
-               e  = u(i,j,k,UEINT)*rhoInv
-               T  = u(i,j,k,UTEMP)
-               do n = 1,nspec
-                  Y(n)=u(i,j,k,UFS+n-1)*rhoInv
-               enddo
-               do n = 1,naux
-                  Y(nspec+n)=u(i,j,k,UFX+n-1)*rhoInv
-               enddo
+               rhoInv = ONE / u(i,j,k,URHO)
 
-               if (allow_negative_energy .eq. 1 .or. e .gt. 0.d0) then
-                  call eos_S_given_ReX(s(i,j,k,1), u(i,j,k,URHO), e, T, Y)
+               eos_state % e  = u(i,j,k,UEINT) * rhoInv
+
+               if (allow_negative_energy .eq. 1 .or. eos_state % e .gt. ZERO) then
+                  eos_state % rho = u(i,j,k,URHO)
+                  eos_state % T   = u(i,j,k,UTEMP)
+                  eos_state % xn  = u(i,j,k,UFS:UFS+nspec-1) * rhoInv
+                  eos_state % aux = u(i,j,k,UFX:UFX+naux-1) * rhoInv
+
+                  call eos(eos_input_re, eos_state, .false.)
+                  s(i,j,k,1) = eos_state % s
                end if
             enddo
          enddo
@@ -731,6 +748,9 @@
       !
       ! This routine will calculate vorticity
       !     
+
+      use bl_constants_module
+
       implicit none
 
       integer          lo(3), hi(3)
@@ -765,12 +785,12 @@
       do k = lo(3), hi(3)
          do j = lo(2), hi(2)
             do i = lo(1), hi(1)
-               uy = 0.5d0 * (dat(i,j+1,k,2) - dat(i,j-1,k,2)) / delta(2)
-               uz = 0.5d0 * (dat(i,j,k+1,2) - dat(i,j,k-1,2)) / delta(3)
-               vx = 0.5d0 * (dat(i+1,j,k,3) - dat(i-1,j,k,3)) / delta(1)
-               vz = 0.5d0 * (dat(i,j,k+1,3) - dat(i,j,k-1,3)) / delta(3)
-               wx = 0.5d0 * (dat(i+1,j,k,4) - dat(i-1,j,k,4)) / delta(1)
-               wy = 0.5d0 * (dat(i,j+1,k,4) - dat(i,j-1,k,4)) / delta(2)
+               uy = HALF * (dat(i,j+1,k,2) - dat(i,j-1,k,2)) / delta(2)
+               uz = HALF * (dat(i,j,k+1,2) - dat(i,j,k-1,2)) / delta(3)
+               vx = HALF * (dat(i+1,j,k,3) - dat(i-1,j,k,3)) / delta(1)
+               vz = HALF * (dat(i,j,k+1,3) - dat(i,j,k-1,3)) / delta(3)
+               wx = HALF * (dat(i+1,j,k,4) - dat(i-1,j,k,4)) / delta(1)
+               wy = HALF * (dat(i,j+1,k,4) - dat(i,j-1,k,4)) / delta(2)
                v1 = wy - vz
                v2 = uz - wx
                v3 = vx - uy
@@ -804,6 +824,9 @@
       !
       ! This routine will divergence of velocity.
       !
+
+      use bl_constants_module
+
       implicit none
 
       integer          lo(3), hi(3)
@@ -829,7 +852,7 @@
                vlo = dat(i,j-1,k,3) / dat(i,j-1,k,1)
                whi = dat(i,j,k+1,4) / dat(i,j,k+1,1)
                wlo = dat(i,j,k-1,4) / dat(i,j,k-1,1)
-               divu(i,j,k,1) = 0.5d0 * ( (uhi-ulo) / delta(1) + &
+               divu(i,j,k,1) = HALF * ( (uhi-ulo) / delta(1) + &
                                          (vhi-vlo) / delta(2) + &
                                          (whi-wlo) / delta(3) )
             end do
@@ -845,8 +868,11 @@
                               dat,dat_l1,dat_l2,dat_l3,dat_h1,dat_h2,dat_h3,nc, &
                               lo,hi,domlo,domhi,delta,xlo,time,dt,bc,level,grid_no)
       !
-      ! This routine will derive kinetic energy = 1/2 rho (u^2 + v^2)
+      ! This routine will derive kinetic energy = 1/2 rho (u^2 + v^2 + w^2)
       !
+
+      use bl_constants_module
+
       implicit none
 
       integer          lo(3), hi(3)
@@ -865,7 +891,7 @@
       do k = lo(3), hi(3)
          do j = lo(2), hi(2)
             do i = lo(1), hi(1)
-               kineng(i,j,k,1) = 0.5d0 / dat(i,j,k,1) * ( dat(i,j,k,2)**2 + &
+               kineng(i,j,k,1) = HALF / dat(i,j,k,1) * ( dat(i,j,k,2)**2 + &
                                                           dat(i,j,k,3)**2 + &
                                                           dat(i,j,k,4)**2 )
             end do

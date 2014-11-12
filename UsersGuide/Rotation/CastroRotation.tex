@@ -1,12 +1,12 @@
 Currently, CASTRO supports contant, solid-body rotation about a fixed
 (in space and time) axis in 2D and 3D by transforming the evolution
 equations to the rotating frame of reference.  The rotational
-frequency (in Hz) is specified by setting {\bf
-  castro.rotational\_frequency} in the inputs file.  Note that this
+period (in s) is specified by setting {\bf
+  castro.rotational\_period} in the inputs file.  Note that this
 parameter is only relevant if USE\_ROTATION = TRUE in the GNUmakefile
 and {\bf castro.do\_rotation} = 1 in the inputs file.  The rotational
-frequency specified by {\bf castro.rotational\_frequency} is internally
-converted to an angular freqeuncy for use in the source term
+period specified by {\bf castro.rotational\_period} is internally
+converted to an angular frequency for use in the source term
 equations.
 
 The axis of rotation currently depends on the dimensionality of the
@@ -112,12 +112,12 @@ the terms in the rotating frame from \ref{eq:a}, we have from \ref{eq:mom1}:
   \begin{eqnarray}
     \rho\left(\frac{D\vbt}{Dt} + 2\ob\times\vbt + \ob\times\left[\ob\times\rbt\right]\right) - \rho\vb\nablab\cdot\vb &=& -\rho\vb\cdot\nablab\vb - \nablab p + \rho\gb \nonumber \\
     \rho\left(\frac{\partial\vbt}{\partial t} + \vbt\cdot\nablab\vbt\right) &=& -\nablab p + \rho\gb - 2\rho\ob\times\vbt - \rho\ob\times\left[\ob\times\rbt\right] \nonumber \\
-  \frac{\partial\left(\rho\vbt\right)}{\partial t} &=& -\nablab\cdot\left(\rho\vbt\vbt\right) + \nablab p + \rho\gb - 2\rho\ob\times\vbt \nonumber \\
+  \frac{\partial\left(\rho\vbt\right)}{\partial t} &=& -\nablab\cdot\left(\rho\vbt\vbt\right) - \nablab p + \rho\gb - 2\rho\ob\times\vbt \nonumber \\
   & & -\ \rho\ob\times\left[\ob\times\rbt\right]\label{eq:mom-rot}
   \end{eqnarray}
 or
   \begin{equation}\label{eq:mom-rot-tot}
-    \frac{D\left(\rho\vbt\right)}{Dt} = -\rho\vbt\cdot\nablab\vbt + \nablab p + \rho\gb - 2\rho\ob\times\vbt - \rho\ob\times\left[\ob\times\rbt\right].
+    \frac{D\left(\rho\vbt\right)}{Dt} = -\rho\vbt\cdot\nablab\vbt - \nablab p + \rho\gb - 2\rho\ob\times\vbt - \rho\ob\times\left[\ob\times\rbt\right].
   \end{equation}
 
 \section{Energy equations in rotating frame}

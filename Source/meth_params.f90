@@ -1,5 +1,7 @@
 
-! This module stores the runtime parameters.  
+! This module stores the runtime parameters and integer names for 
+! indexing arrays.
+!
 ! These parameter are initialized in set_method_params().
 
 module meth_params_module
@@ -30,11 +32,21 @@ module meth_params_module
   double precision, save :: small_dens, small_temp, small_pres  
 
   integer         , save :: allow_negative_energy
+
   integer         , save :: ppm_type
   integer         , save :: ppm_reference
   integer         , save :: ppm_trace_grav
   integer         , save :: ppm_temp_fix
+  integer         , save :: ppm_tau_in_tracing
+  integer         , save :: ppm_reference_edge_limit
+  integer         , save :: ppm_flatten_before_integrals
+  integer         , save :: ppm_reference_eigenvectors
   integer         , save :: use_colglaz
+  integer         , save :: use_flattening
+  integer         , save :: transverse_use_eos
+  integer         , save :: transverse_reset_density
+  integer         , save :: transverse_reset_rhoe
+
   integer         , save :: cg_maxiter
   double precision, save :: cg_tol
   integer         , save :: use_pslope
@@ -52,7 +64,10 @@ module meth_params_module
   logical         , save :: outflow_data_allocated
   double precision, save :: max_dist
 
-  double precision, save :: rot_freq
+  double precision, save :: rot_period
   double precision, save :: const_grav
+
+  integer, save :: npassive
+  integer, save, allocatable :: qpass_map(:), upass_map(:)
 
 end module meth_params_module

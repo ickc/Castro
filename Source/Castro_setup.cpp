@@ -5,7 +5,7 @@
 #include <ParmParse.H>
 #include "Castro.H"
 #include "Castro_F.H"
-#include "Derive_F.H"
+#include <Derive_F.H>
 #ifdef RADIATION
 # include "Radiation.H"
 # include "RAD_F.H"
@@ -194,7 +194,7 @@ Castro::variableSetUp ()
     const Real run_strt = ParallelDescriptor::second() ; 
 
 #ifndef ROTATION
-    static Real rotational_frequency = 0;
+    static Real rotational_period = 0;
 #endif
 
     // we want const_grav in F90, get it here from parmparse, since it
@@ -208,12 +208,15 @@ Castro::variableSetUp ()
         (dm, Density, Xmom, Eden, Eint, Temp, FirstAdv, FirstSpec, FirstAux, 
          NumAdv, difmag, small_dens, small_temp, small_pres, 
          allow_negative_energy,ppm_type,ppm_reference,
-	 ppm_trace_grav,ppm_temp_fix,
-	 use_colglaz,
+	 ppm_trace_grav,ppm_temp_fix,ppm_tau_in_tracing,ppm_reference_edge_limit,
+	 ppm_flatten_before_integrals,
+	 ppm_reference_eigenvectors,
+	 use_colglaz, use_flattening, 
+         transverse_use_eos, transverse_reset_density, transverse_reset_rhoe,
          cg_maxiter, cg_tol,
          use_pslope, 
 	 grav_source_type, do_sponge,
-         gamma,normalize_species,fix_mass_flux,use_sgs,rotational_frequency,
+         normalize_species,fix_mass_flux,use_sgs,rotational_period,
 	 const_grav);
 
     Real run_stop = ParallelDescriptor::second() - run_strt;
@@ -443,10 +446,7 @@ Castro::variableSetUp ()
 
 #ifdef RADIATION
     int ngrow = 1;
-    int ncomp;
-    ncomp = Radiation::nGroups * (Radiation::H_time_derivative ?
-				  BL_SPACEDIM + 1 :
-				  1);
+    int ncomp = Radiation::nGroups;
     desc_lst.addDescriptor(Rad_Type, IndexType::TheCellType(),
                            StateDescriptor::Point, ngrow, ncomp,
                            interp);
@@ -480,15 +480,7 @@ Castro::variableSetUp ()
     if (!Radiation::do_multigroup) {
       desc_lst
         .setComponent(Rad_Type, Rad, "rad", bc,
-                      BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
-      if (Radiation::H_time_derivative) {
-	for (int i = 0; i < BL_SPACEDIM; i++) {
-	  sprintf(rad_name, "radflux%d", i);
-          desc_lst
-            .setComponent(Rad_Type, i+1, rad_name, bc,
-                          BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
-        }
-      }
+                      BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
     }
     else {
       if (Radiation::nNeutrinoSpecies == 0 ||
@@ -497,7 +489,7 @@ Castro::variableSetUp ()
 	  sprintf(rad_name, "rad%d", i);
 	  desc_lst
             .setComponent(Rad_Type, i, rad_name, bc,
-                          BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
+                          BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
 	}
       }
       else {
@@ -507,7 +499,7 @@ Castro::variableSetUp ()
 	    sprintf(rad_name, "rads%dg%d", j, i);
 	    desc_lst
               .setComponent(Rad_Type, indx, rad_name, bc,
-                            BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
+                            BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
 	    indx++;
 	  }
 	}
@@ -517,8 +509,7 @@ Castro::variableSetUp ()
     // In the following ncomp == 0 would be fine, except that it
     // violates an assertion in StateDescriptor.cpp.  I think we could
     // run with ncomp == 0 just by taking out that assertion.
-    //ncomp = (RadTests::do_timing) ? 0 : 2;
-    ncomp = (RadTests::do_timing) ? 1 : 2;
+    ncomp = 2;
     ncomp = (Radiation::Test_Type_lambda) ? 1 : ncomp;
     int nspec = (Radiation::nNeutrinoSpecies>0) ? Radiation::nNeutrinoSpecies : 1;
     if (Radiation::Test_Type_Flux) {
@@ -558,25 +549,25 @@ Castro::variableSetUp ()
       for (int idim=0; idim<BL_SPACEDIM; idim++) {
 	for (int ispec=0; ispec<nspec; ispec++) {
 	  desc_lst.setComponent(Test_Type, icomp, "F"+dimname[idim]+radname[ispec], bc,
-				BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
+				BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
 	  icomp++;
 	}
       }
       if (Radiation::Test_Type_lambda) {
 	desc_lst.setComponent(Test_Type, icomp, "lambda", bc,
-			      BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
+			      BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
       }
     }
     else if (Radiation::Test_Type_lambda) {
       desc_lst.setComponent(Test_Type, 0, "lambda", bc,
-			    BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));      
+			    BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));      
     }
     else {
       char test_name[10];
       for (int i = 0; i < ncomp; i++){
 	sprintf(test_name, "test%d", i);
 	desc_lst.setComponent(Test_Type, i, test_name, bc,
-			      BndryFunc(BL_FORT_PROC_CALL(CA_DENFILL,ca_radfill)));
+			      BndryFunc(BL_FORT_PROC_CALL(CA_RADFILL,ca_radfill)));
       }
     }
 #endif
@@ -889,6 +880,11 @@ Castro::variableSetUp ()
     derive_lst.addComponent("FULLSTATE",desc_lst,State_Type,Density,NUM_STATE);
 
 #endif
+
+
+    // 
+    // Problem-specific adds
+#include <Problem_Derives.H>
 
     //
     // DEFINE ERROR ESTIMATION QUANTITIES

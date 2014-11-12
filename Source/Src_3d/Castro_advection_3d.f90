@@ -5,7 +5,7 @@ module advection_module
   private
 
   public umeth3d, ctoprim, divu, consup, enforce_minimum_density, normalize_new_species, &
-       normalize_species_fluxes, uflaten
+       normalize_species_fluxes
   
 contains
 
@@ -30,7 +30,7 @@ contains
 ! ::: :: flux1      <=  (modify) flux in X direction on X edges
 ! ::: :: flux2      <=  (modify) flux in Y direction on Y edges
 ! ::: :: flux3      <=  (modify) flux in Z direction on Z edges
-! L:: ----------------------------------------------------------------
+! ::: ----------------------------------------------------------------
 
   subroutine umeth3d(q, c, gamc, csml, flatn, qd_l1, qd_l2, qd_l3, qd_h1, qd_h2, qd_h3, &
                      srcQ, src_l1, src_l2, src_l3, src_h1, src_h2, src_h3, &
@@ -47,15 +47,18 @@ contains
                      ugdnvz_h1,ugdnvz_h2,ugdnvz_h3, &
                      pdivu, domlo, domhi)
 
-    use meth_params_module, only : QVAR, NVAR, QPRES, QRHO, QU, QFS, QTEMP, QREINT, ppm_type, &
+    use meth_params_module, only : QVAR, NVAR, QPRES, QRHO, QU, QFS, QFX, QTEMP, QREINT, ppm_type, &
                                    use_pslope, ppm_trace_grav, ppm_temp_fix
     use trace_ppm_module, only : tracexy_ppm, tracez_ppm
     use trace_module, only : tracexy, tracez
+    use transverse_module
     use ppm_module, only : ppm
     use slope_module, only : uslope, pslope
     use network
-    use eos_type_module
     use eos_module
+    use eos_type_module
+    use riemann_module, only: cmpflx
+    use bl_constants_module
 
     implicit none
 
@@ -133,6 +136,7 @@ contains
 
     double precision, allocatable:: Ip(:,:,:,:,:,:), Im(:,:,:,:,:,:)
     double precision, allocatable:: Ip_g(:,:,:,:,:,:), Im_g(:,:,:,:,:,:)
+    double precision, allocatable:: Ip_gc(:,:,:,:,:,:), Im_gc(:,:,:,:,:,:)
     
     type (eos_t) :: eos_state
 
@@ -221,20 +225,24 @@ contains
     allocate ( Ip_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
     allocate ( Im_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
 
+    ! for gamc -- needed for the reference state in eigenvectors
+    allocate ( Ip_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,1))
+    allocate ( Im_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,1))
+
     ! Local constants
     dtdx = dt/dx
     dtdy = dt/dy
     dtdz = dt/dz
-    hdt = 0.5d0*dt
-    hdtdx = 0.5d0*dtdx
-    hdtdy = 0.5d0*dtdy
-    hdtdz = 0.5d0*dtdz
-    cdtdx = dtdx/3.d0
-    cdtdy = dtdy/3.d0
-    cdtdz = dtdz/3.d0
+    hdt = HALF*dt
+    hdtdx = HALF*dtdx
+    hdtdy = HALF*dtdy
+    hdtdz = HALF*dtdz
+    cdtdx = dtdx*THIRD
+    cdtdy = dtdy*THIRD
+    cdtdz = dtdz*THIRD
 
     ! Initialize pdivu to zero
-    pdivu(:,:,:) = 0.d0
+    pdivu(:,:,:) = ZERO
 
     ! Initialize kc (current k-level) and km (previous k-level)
     kc = 1
@@ -252,6 +260,7 @@ contains
           do n=1,QVAR
              call ppm(q(:,:,:,n  ),  qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       Ip(:,:,:,:,:,n),Im(:,:,:,:,:,n), &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
           end do
@@ -260,35 +269,49 @@ contains
              do n=1,3
                 call ppm(grav(:,:,:,n),gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
                          q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                         flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          Ip_g(:,:,:,:,:,n),Im_g(:,:,:,:,:,n), &
                          ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
              enddo
+          endif
+
+
+          if (ppm_temp_fix /= 1) then
+             call ppm(gamc(:,:,:),qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      Ip_gc(:,:,:,:,:,1),Im_gc(:,:,:,:,:,1), &
+                      ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
           endif
           
           ! temperature-based PPM
           if (ppm_temp_fix == 1) then
              do j = ilo2-1, ihi2+1
                 do i = ilo1-1, ihi1+1
-                   do iwave = 1, 3
-                      do idim = 1, 3
-                         eos_state%rho   = Ip(i,j,kc,iwave,idim,QRHO)
-                         eos_state%T     = Ip(i,j,kc,iwave,idim,QTEMP)
-                         eos_state%xn(:) = Ip(i,j,kc,iwave,idim,QFS:QFS-1+nspec)
+                   do idim = 1, 3
+                      do iwave = 1, 3
+                         eos_state % rho = Ip(i,j,kc,idim,iwave,QRHO)
+                         eos_state % T   = Ip(i,j,kc,idim,iwave,QTEMP)
+                         eos_state % xn  = Ip(i,j,kc,idim,iwave,QFS:QFS-1+nspec)
+                         eos_state % aux = Ip(i,j,kc,idim,iwave,QFX:QFX-1+naux)
+
+                         call eos(eos_input_rt, eos_state, .false.)
+                         
+                         Ip(i,j,kc,idim,iwave,QPRES) = eos_state%p
+                         Ip(i,j,kc,idim,iwave,QREINT) = Ip(i,j,kc,idim,iwave,QRHO)*eos_state%e
+                         Ip_gc(i,j,kc,idim,iwave,1) = eos_state%gam1
+
+                         
+                         eos_state % rho = Im(i,j,kc,idim,iwave,QRHO)
+                         eos_state % T   = Im(i,j,kc,idim,iwave,QTEMP)
+                         eos_state % xn  = Im(i,j,kc,idim,iwave,QFS:QFS-1+nspec)
+                         eos_state % aux = Im(i,j,kc,idim,iwave,QFX:QFX-1+naux)
                          
                          call eos(eos_input_rt, eos_state, .false.)
                          
-                         Ip(i,j,kc,iwave,idim,QPRES) = eos_state%p
-                         Ip(i,j,kc,iwave,idim,QREINT) = Ip(i,j,kc,iwave,idim,QRHO)*eos_state%e
-                         
-                         
-                         eos_state%rho   = Im(i,j,kc,iwave,idim,QRHO)
-                         eos_state%T     = Im(i,j,kc,iwave,idim,QTEMP)
-                         eos_state%xn(:) = Im(i,j,kc,iwave,idim,QFS:QFS-1+nspec)
-                         
-                         call eos(eos_input_rt, eos_state, .false.)
-                         
-                         Im(i,j,kc,iwave,idim,QPRES) = eos_state%p
-                         Im(i,j,kc,iwave,idim,QREINT) = Im(i,j,kc,iwave,idim,QRHO)*eos_state%e
+                         Im(i,j,kc,idim,iwave,QPRES) = eos_state%p
+                         Im(i,j,kc,idim,iwave,QREINT) = Im(i,j,kc,idim,iwave,QRHO)*eos_state%e
+                         Im_gc(i,j,kc,idim,iwave,1) = eos_state%gam1
                          
                       enddo
                    enddo
@@ -299,9 +322,10 @@ contains
 
           ! Compute U_x and U_y at kc (k3d)
           call tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                           Ip,Im,Ip_g,Im_g, &
+                           Ip,Im,Ip_g,Im_g,Ip_gc,Im_gc, &
                            qxm,qxp,qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                            grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
+                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            ilo1,ilo2,ihi1,ihi2,dx,dy,dt,kc,k3d)
 
        else
@@ -374,9 +398,10 @@ contains
           ! Compute U_z at kc (k3d)
           if (ppm_type .gt. 0) then
              call tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                             Ip,Im,Ip_g,Im_g, &
+                             Ip,Im,Ip_g,Im_g,Ip_gc,Im_gc, &
                              qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                              grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
+                             gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              ilo1,ilo2,ihi1,ihi2,dz,dt,km,kc,k3d)
           else
              call tracez(q,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
@@ -448,7 +473,7 @@ contains
              do j = ilo2,ihi2
                 do i = ilo1,ihi1
                    pdivu(i,j,k3d-1) = pdivu(i,j,k3d-1) +  &
-                        0.5d0*(pgdnvzf(i,j,kc)+pgdnvzf(i,j,km)) * &
+                        HALF*(pgdnvzf(i,j,kc)+pgdnvzf(i,j,km)) * &
                               (ugdnvzf(i,j,kc)-ugdnvzf(i,j,km))/dz
                 end do
              end do
@@ -529,9 +554,9 @@ contains
              do j = ilo2,ihi2
                 do i = ilo1,ihi1
                    pdivu(i,j,k3d-1) = pdivu(i,j,k3d-1) +  &
-                        0.5d0*(pgdnvxf(i+1,j,km) + pgdnvxf(i,j,km)) *  &
+                        HALF*(pgdnvxf(i+1,j,km) + pgdnvxf(i,j,km)) *  &
                               (ugdnvxf(i+1,j,km)-ugdnvxf(i,j,km))/dx + &
-                        0.5d0*(pgdnvyf(i,j+1,km) + pgdnvyf(i,j,km)) *  &
+                        HALF*(pgdnvyf(i,j+1,km) + pgdnvyf(i,j,km)) *  &
                               (ugdnvyf(i,j+1,km)-ugdnvyf(i,j,km))/dy
                 end do
              end do
@@ -568,9 +593,8 @@ contains
     deallocate(fzx,fzy)
     deallocate(Ip,Im)
     deallocate(Ip_g,Im_g)
+    deallocate(Ip_gc,Im_gc)
       
-    call bl_proffortfuncstop("umeth3d")
-
   end subroutine umeth3d
 
 ! ::: 
@@ -580,21 +604,25 @@ contains
   subroutine ctoprim(lo,hi,          uin,uin_l1,uin_l2,uin_l3,uin_h1,uin_h2,uin_h3, &
                      q,c,gamc,csml,flatn,  q_l1,  q_l2,  q_l3,  q_h1,  q_h2,  q_h3, &
                      src,srcQ,           src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-                     courno,dx,dy,dz,dt,ngp,ngf,iflaten)
+                     courno,dx,dy,dz,dt,ngp,ngf)
     !
     !     Will give primitive variables on lo-ngp:hi+ngp, and flatn on lo-ngf:hi+ngf
-    !     if iflaten=1.  Declared dimensions of q,c,gamc,csml,flatn are given
+    !     if use_flattening=1.  Declared dimensions of q,c,gamc,csml,flatn are given
     !     by DIMS(q).  This declared region is assumed to encompass lo-ngp:hi+ngp.
     !     Also, uflaten call assumes ngp>=ngf+3 (ie, primitve data is used by the
     !     routine that computes flatn).  
     !
     use network, only : nspec, naux
     use eos_module
+    use eos_type_module
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, &
                                    UEDEN, UEINT, UESGS, UTEMP, UFA, UFS, UFX, &
                                    QVAR, QRHO, QU, QV, QW, &
-                                   QREINT, QESGS, QPRES, QTEMP, QFA, QFS, QFX, &
-                                   nadv, allow_negative_energy, small_temp
+                                   QREINT, QESGS, QPRES, QTEMP, QGAME, QFA, QFS, QFX, &
+                                   nadv, allow_negative_energy, small_temp, use_flattening
+    use flatten_module
+    use bl_constants_module
+
     implicit none
 
     double precision, parameter:: small = 1.d-8
@@ -613,7 +641,6 @@ contains
     double precision ::  src(src_l1:src_h1,src_l2:src_h2,src_l3:src_h3,NVAR)
     double precision :: srcQ(src_l1:src_h1,src_l2:src_h2,src_l3:src_h3,QVAR)
     double precision :: dx, dy, dz, dt, courno
-    integer          :: iflaten
 
     double precision, allocatable:: dpdrho(:,:,:)
     double precision, allocatable:: dpde(:,:,:)
@@ -626,8 +653,7 @@ contains
     integer          :: iadv, ispec, iaux
     double precision :: courx, coury, courz, courmx, courmy, courmz
 
-    !!! external proffortfuncstart, proffortfuncstop
-    call bl_proffortfuncstart("ctoprim")
+    type (eos_t) :: eos_state
 
     allocate( dpdrho(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3))
     allocate(   dpde(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3))
@@ -646,7 +672,7 @@ contains
        do j = loq(2),hiq(2)
           do i = loq(1),hiq(1)
              
-             if (uin(i,j,k,URHO) .le. 0.d0) then
+             if (uin(i,j,k,URHO) .le. ZERO) then
                 print *,'   '
                 print *,'>>> Error: Castro_advection_3d::ctoprim ',i,j,k
                 print *,'>>> ... negative density ',uin(i,j,k,URHO)
@@ -716,7 +742,7 @@ contains
     !$OMP END PARALLEL DO
 
     ! Get gamc, p, T, c, csml using q state
-    !$OMP PARALLEL DO PRIVATE(i,j,k,pt_index)
+    !$OMP PARALLEL DO PRIVATE(i,j,k,eos_state,pt_index)
     do k = loq(3), hiq(3)
        do j = loq(2), hiq(2)
           do i = loq(1), hiq(1)
@@ -724,32 +750,49 @@ contains
              pt_index(1) = i
              pt_index(2) = j
              pt_index(3) = k
-             
-             ! If necessary, reset the energy using small_temp
-             if ((allow_negative_energy .eq. 0) .and. (q(i,j,k,QREINT) .lt. 0)) then
-                q(i,j,k,QTEMP) = small_temp
-                call eos_given_RTX(q(i,j,k,QREINT),q(i,j,k,QPRES),q(i,j,k,QRHO), &
-                                   q(i,j,k,QTEMP),q(i,j,k,QFS:),pt_index=pt_index)
 
-                if (q(i,j,k,QREINT) .lt. 0.d0) then
+             eos_state % T   = q(i,j,k,QTEMP)
+             eos_state % rho = q(i,j,k,QRHO)
+             eos_state % xn  = q(i,j,k,QFS:QFS+nspec-1)
+             eos_state % aux = q(i,j,k,QFX:QFX+naux-1)             
+
+             ! If necessary, reset the energy using small_temp
+             if ((allow_negative_energy .eq. 0) .and. (q(i,j,k,QREINT) .lt. ZERO)) then
+                q(i,j,k,QTEMP) = small_temp
+                eos_state % T =  q(i,j,k,QTEMP)
+
+                call eos(eos_input_rt, eos_state, .false., pt_index = pt_index)
+                q(i,j,k,QREINT) = eos_state % e
+
+                if (q(i,j,k,QREINT) .lt. ZERO) then
                    print *,'   '
                    print *,'>>> Error: Castro_advection_3d::ctoprim ',i,j,k
-                   print *,'>>> ... new e from eos_given_RTX call is negative ' &
+                   print *,'>>> ... new e from eos (input_rt) call is negative ' &
                         ,q(i,j,k,QREINT)
                    print *,'    '
                    call bl_error("Error:: Castro_advection_3d.f90 :: ctoprim")
                 end if
              end if
 
-             call eos_given_ReX(gamc(i,j,k), q(i,j,k,QPRES), c(i,j,k), q(i,j,k,QTEMP), &
-                                dpdrho(i,j,k), dpde(i,j,k), &
-                                q(i,j,k,QRHO), q(i,j,k,QREINT), q(i,j,k,QFS:), &
-                                pt_index=pt_index)!, &
-             !                                  dpdX_er=dpdX_er(i,j,k,:))
+             eos_state % e = q(i,j,k,QREINT)
+
+             call eos(eos_input_re, eos_state, .false., pt_index = pt_index)
+
+             q(i,j,k,QTEMP)  = eos_state % T
+             q(i,j,k,QREINT) = eos_state % e
+             q(i,j,k,QPRES)  = eos_state % p
+
+             dpdrho(i,j,k) = eos_state % dpdr_e
+             dpde(i,j,k)   = eos_state % dpde
+             c(i,j,k)      = eos_state % cs
+             gamc(i,j,k)   = eos_state % gam1
+
              csml(i,j,k) = max(small, small * c(i,j,k))
 
              ! convert "e" back to "rho e"
              q(i,j,k,QREINT) = q(i,j,k,QREINT)*q(i,j,k,QRHO)
+
+             q(i,j,k,QGAME) = q(i,j,k,QPRES)/q(i,j,k,QREINT) + ONE
 
           end do
        end do
@@ -769,7 +812,7 @@ contains
              srcQ(i,j,k,QREINT) = src(i,j,k,UEDEN) - q(i,j,k,QU)*src(i,j,k,UMX) &
                                                    - q(i,j,k,QV)*src(i,j,k,UMY) &
                                                    - q(i,j,k,QW)*src(i,j,k,UMZ) &
-                                    + 0.5d0 * (q(i,j,k,QU)**2 + q(i,j,k,QV)**2 + q(i,j,k,QW)**2) * srcQ(i,j,k,QRHO)
+                                    + HALF * (q(i,j,k,QU)**2 + q(i,j,k,QV)**2 + q(i,j,k,QW)**2) * srcQ(i,j,k,QRHO)
 
              srcQ(i,j,k,QPRES ) = dpde(i,j,k)*(srcQ(i,j,k,QREINT) - &
                   q(i,j,k,QREINT)*srcQ(i,j,k,QRHO)/q(i,j,k,QRHO)) /q(i,j,k,QRHO) + &
@@ -818,7 +861,7 @@ contains
              courmy = max( courmy, coury )
              courmz = max( courmz, courz )
              
-             if (courx .gt. 1.d0) then
+             if (courx .gt. ONE) then
                 print *,'   '
                 call bl_warning("Warning:: Castro_advection_3d.f90 :: CFL violation in ctoprim")
                 print *,'>>> ... (u+c) * dt / dx > 1 ', courx
@@ -827,7 +870,7 @@ contains
                 print *,'>>> ... density             ',q(i,j,k,QRHO)
              end if
              
-             if (coury .gt. 1.d0) then
+             if (coury .gt. ONE) then
                 print *,'   '
                 call bl_warning("Warning:: Castro_advection_3d.f90 :: CFL violation in ctoprim")
                 print *,'>>> ... (v+c) * dt / dx > 1 ', coury
@@ -836,7 +879,7 @@ contains
                 print *,'>>> ... density             ',q(i,j,k,QRHO)
              end if
              
-             if (courz .gt. 1.d0) then
+             if (courz .gt. ONE) then
                 print *,'   '
                 call bl_warning("Warning:: Castro_advection_3d.f90 :: CFL violation in ctoprim")
                 print *,'>>> ... (w+c) * dt / dx > 1 ', courz
@@ -853,7 +896,7 @@ contains
     courno = max( courmx, courmy, courmz )
 
     ! Compute flattening coef for slope calculations
-    if(iflaten.eq.1)then
+    if (use_flattening == 1) then
        do n=1,3
           loq(n)=lo(n)-ngf
           hiq(n)=hi(n)+ngf
@@ -865,7 +908,7 @@ contains
                     q(q_l1,q_l2,q_l3,QW), &
                     flatn,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3)
     else
-       flatn = 1.d0
+       flatn = ONE
     endif
 
     deallocate(dpdrho,dpde)
@@ -894,6 +937,7 @@ contains
     use eos_module
     use meth_params_module, only : difmag, NVAR, URHO, UMX, UMY, UMZ, &
          UEDEN, UEINT, UTEMP, normalize_species
+    use bl_constants_module
 
     implicit none
 
@@ -933,9 +977,9 @@ contains
          
        if ( n.eq.UTEMP ) then
           
-          flux1(:,:,:,n) = 0.d0
-          flux2(:,:,:,n) = 0.d0
-          flux3(:,:,:,n) = 0.d0
+          flux1(:,:,:,n) = ZERO
+          flux2(:,:,:,n) = ZERO
+          flux3(:,:,:,n) = ZERO
           
        else
 
@@ -944,8 +988,8 @@ contains
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)+1
-                   div1 = .25d0*(div(i,j,k) + div(i,j+1,k) + div(i,j,k+1) + div(i,j+1,k+1))
-                   div1 = difmag*min(0.d0,div1)
+                   div1 = FOURTH*(div(i,j,k) + div(i,j+1,k) + div(i,j,k+1) + div(i,j+1,k+1))
+                   div1 = difmag*min(ZERO,div1)
                    flux1(i,j,k,n) = flux1(i,j,k,n) + dx*div1*(uin(i,j,k,n)-uin(i-1,j,k,n))
                    flux1(i,j,k,n) = flux1(i,j,k,n) * area1(i,j,k) * dt
                 enddo
@@ -956,8 +1000,8 @@ contains
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)+1
                 do i = lo(1),hi(1)
-                   div1 = .25d0*(div(i,j,k) + div(i+1,j,k) + div(i,j,k+1) + div(i+1,j,k+1))
-                   div1 = difmag*min(0.d0,div1)
+                   div1 = FOURTH*(div(i,j,k) + div(i+1,j,k) + div(i,j,k+1) + div(i+1,j,k+1))
+                   div1 = difmag*min(ZERO,div1)
                    flux2(i,j,k,n) = flux2(i,j,k,n) + dy*div1*(uin(i,j,k,n)-uin(i,j-1,k,n))
                    flux2(i,j,k,n) = flux2(i,j,k,n) * area2(i,j,k) * dt
                 enddo
@@ -968,8 +1012,8 @@ contains
           do k = lo(3),hi(3)+1
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)
-                   div1 = .25d0*(div(i,j,k) + div(i+1,j,k) + div(i,j+1,k) + div(i+1,j+1,k))
-                   div1 = difmag*min(0.d0,div1)
+                   div1 = FOURTH*(div(i,j,k) + div(i+1,j,k) + div(i,j+1,k) + div(i+1,j+1,k))
+                   div1 = difmag*min(ZERO,div1)
                    flux3(i,j,k,n) = flux3(i,j,k,n) + dz*div1*(uin(i,j,k,n)-uin(i,j,k-1,n))
                    flux3(i,j,k,n) = flux3(i,j,k,n) * area3(i,j,k) * dt
                 enddo
@@ -1038,318 +1082,11 @@ contains
 ! ::: ------------------------------------------------------------------
 ! ::: 
 
-  subroutine cmpflx(qm,qp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
-                    flx,flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3, &
-                    ugdnv,pgdnv,pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3, &
-                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                    idir,ilo,ihi,jlo,jhi,kc,kflux,k3d,domlo,domhi)
-
-    use eos_type_module
-    use eos_module
-    use meth_params_module, only : QVAR, NVAR, QRHO, QFS, QPRES, QREINT, &
-                                   use_colglaz, ppm_temp_fix
-    use riemann_module, only : riemannus, riemanncg
-
-    implicit none
-
-    integer qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3
-    integer flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3
-    integer pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3
-    integer qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
-    integer idir,ilo,ihi,jlo,jhi
-    integer i,j,kc,kflux,k3d
-    integer domlo(3),domhi(3)
-
-    double precision qm(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
-    double precision qp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
-    double precision flx(flx_l1:flx_h1,flx_l2:flx_h2,flx_l3:flx_h3,NVAR)
-    double precision ugdnv(pg_l1:pg_h1,pg_l2:pg_h2,pg_l3:pg_h3)
-    double precision pgdnv(pg_l1:pg_h1,pg_l2:pg_h2,pg_l3:pg_h3)
-    double precision gamc(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
-    double precision csml(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
-    double precision    c(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
-
-    double precision, allocatable :: smallc(:,:),cavg(:,:)
-    double precision, allocatable :: gamcm(:,:),gamcp(:,:)
-
-    type (eos_t) :: eos_state
-
-    allocate ( smallc(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (   cavg(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (  gamcm(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (  gamcp(ilo-1:ihi+1,jlo-1:jhi+1) )
-      
-    if(idir.eq.1) then
-       do j = jlo, jhi
-          do i = ilo, ihi
-             smallc(i,j) = max( csml(i,j,k3d), csml(i-1,j,k3d) )
-             cavg(i,j) = 0.5d0*( c(i,j,k3d) + c(i-1,j,k3d) )
-             gamcm(i,j) = gamc(i-1,j,k3d)
-             gamcp(i,j) = gamc(i,j,k3d)
-          enddo
-       enddo
-    elseif(idir.eq.2) then
-       do j = jlo, jhi
-          do i = ilo, ihi
-             smallc(i,j) = max( csml(i,j,k3d), csml(i,j-1,k3d) )
-             cavg(i,j) = 0.5d0*( c(i,j,k3d) + c(i,j-1,k3d) )
-             gamcm(i,j) = gamc(i,j-1,k3d)
-             gamcp(i,j) = gamc(i,j,k3d)
-          enddo
-       enddo
-    else
-       do j = jlo, jhi
-          do i = ilo, ihi
-             smallc(i,j) = max( csml(i,j,k3d), csml(i,j,k3d-1) )
-             cavg(i,j) = 0.5d0*( c(i,j,k3d) + c(i,j,k3d-1) )
-             gamcm(i,j) = gamc(i,j,k3d-1)
-             gamcp(i,j) = gamc(i,j,k3d)
-          enddo
-       enddo
-    endif
-    
-    if (ppm_temp_fix == 2) then
-       ! recompute the thermodynamics on the interface to make it
-       ! all consistent
-
-       ! we want to take the edge states of rho, p, and X, and get
-       ! new values for gamc and (rho e) on the edges that are 
-       ! thermodynamically consistent.
-       do j = jlo, jhi
-          do i = ilo, ihi
-
-             ! this is an initial guess for iterations, since we
-             ! can't be certain that temp is on interfaces
-             eos_state%T = 10000.0d0   
-                              
-             ! minus state
-             eos_state%rho = qm(i,j,kc,QRHO)
-             eos_state%p   = qm(i,j,kc,QPRES)
-             eos_state%xn  = qm(i,j,kc,QFS:QFS-1+nspec)
-
-             call eos(eos_input_rp, eos_state, .false.)
-
-             qm(i,j,kc,QREINT) = qm(i,j,kc,QRHO)*eos_state%e
-             gamcm(i,j) = eos_state%gam1
-
-
-             ! plus state
-             eos_state%rho = qp(i,j,kc,QRHO)
-             eos_state%p   = qp(i,j,kc,QPRES)
-             eos_state%xn  = qp(i,j,kc,QFS:QFS-1+nspec)
-
-             call eos(eos_input_rp, eos_state, .false.)
-
-             qp(i,j,kc,QREINT) = qp(i,j,kc,QRHO)*eos_state%e
-             gamcp(i,j) = eos_state%gam1
-
-          enddo
-       enddo
-         
-    endif
-
-    ! Solve Riemann problem
-    if (use_colglaz == 1) then
-       call riemanncg(qm,qp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
-                      gamcm,gamcp,cavg,smallc,ilo-1,jlo-1,ihi+1,jhi+1, &
-                      flx,flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3, &
-                      ugdnv,pgdnv,pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3, &
-                      idir,ilo,ihi,jlo,jhi,kc,kflux,domlo,domhi)
-
-    else
-       call riemannus(qm,qp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
-                      gamcm,gamcp,cavg,smallc,ilo-1,jlo-1,ihi+1,jhi+1, &
-                      flx,flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3, &
-                      ugdnv,pgdnv,pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3, &
-                      idir,ilo,ihi,jlo,jhi,kc,kflux,domlo,domhi)
-    endif
-
-    deallocate(smallc,cavg,gamcm,gamcp)
-
-  end subroutine cmpflx
-
-! ::: 
-! ::: ------------------------------------------------------------------
-! ::: 
-
-  subroutine uflaten(lo,hi,p,u,v,w,flatn,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3)
-
-    use meth_params_module, only : iorder, small_pres
-
-    implicit none
-
-    integer lo(3),hi(3)
-    integer q_l1,q_l2,q_l3,q_h1,q_h2,q_h3
-    
-    double precision p(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
-    double precision u(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
-    double precision v(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
-    double precision w(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
-    double precision flatn(q_l1:q_h1,q_l2:q_h2,q_l3:q_h3)
-
-    integer i, j, k, idx, ishft
-    integer nx,ny,nz,nmax
-
-    double precision denom, zeta, tst, tmp, ftmp
-
-    ! Local arrays
-    double precision, allocatable :: dp(:,:,:), z(:,:,:), chi(:,:,:)
-    
-    ! Knobs for detection of strong shock
-    double precision, parameter :: shktst = 0.33d0, zcut1 = 0.75d0, zcut2 = 0.85d0, dzcut = 1.d0/(zcut2-zcut1)
-
-    nx = hi(1)-lo(1)+3
-    ny = hi(2)-lo(2)+3
-    nz = hi(3)-lo(3)+3
-
-    nmax = max(nx,ny,nz)
-
-    if (iorder .eq. 3) then
-       do k = lo(3),hi(3)
-          do j = lo(2),hi(2) 
-             do i = lo(1),hi(1) 
-                flatn(i,j,k) = 1.d0
-             enddo
-          enddo
-       enddo
-       return
-    endif
-
-    ! x-direction flattening coef
-    allocate(dp (0:nmax-1,lo(2):hi(2),lo(3):hi(3)))
-    allocate(z  (0:nmax-1,lo(2):hi(2),lo(3):hi(3)))
-    allocate(chi(0:nmax-1,lo(2):hi(2),lo(3):hi(3)))
-    !$OMP PARALLEL DO PRIVATE(i,j,k,idx,denom,zeta,tst,tmp,ishft)
-    do k = lo(3),hi(3)
-       do j = lo(2),hi(2) 
-          do i = lo(1)-1,hi(1)+1
-             idx = i-lo(1)+1
-             dp(idx,j,k) = p(i+1,j,k) - p(i-1,j,k)
-             denom = max(small_pres,abs(p(i+2,j,k)-p(i-2,j,k)))
-             zeta = abs(dp(idx,j,k))/denom
-             z(idx,j,k) = min( 1.d0, max( 0.d0, dzcut*(zeta - zcut1) ) )
-             if (u(i-1,j,k)-u(i+1,j,k) .ge. 0.d0) then
-                tst = 1.d0
-             else
-                tst = 0.d0
-             endif
-             tmp = min(p(i+1,j,k),p(i-1,j,k))
-             if ((abs(dp(idx,j,k))/tmp).gt.shktst) then
-                chi(idx,j,k) = tst
-             else
-                chi(idx,j,k) = 0.d0
-             endif
-          enddo
-          do i = lo(1),hi(1)
-             idx = i-lo(1)+1
-             if(dp(idx,j,k).gt.0.d0)then
-                ishft = 1
-             else
-                ishft = -1
-             endif
-             flatn(i,j,k) = 1.d0 - &
-                  max(chi(idx-ishft,j,k)*z(idx-ishft,j,k),chi(idx,j,k)*z(idx,j,k))
-          enddo
-       enddo
-    enddo
-    !$OMP END PARALLEL DO
-
-    deallocate(dp,z,chi)
-
-    ! y-direction flattening coef
-    allocate(dp (lo(1):hi(1),0:nmax-1,lo(3):hi(3)))
-    allocate(z  (lo(1):hi(1),0:nmax-1,lo(3):hi(3)))
-    allocate(chi(lo(1):hi(1),0:nmax-1,lo(3):hi(3)))
-    !$OMP PARALLEL DO PRIVATE(i,j,k,idx,denom,zeta,tst,tmp,ishft,ftmp)
-    do k = lo(3),hi(3)
-       do i = lo(1),hi(1)
-          do j = lo(2)-1,hi(2)+1
-             idx = j-lo(2)+1
-             dp(i,idx,k) = p(i,j+1,k) - p(i,j-1,k)
-             denom = max(small_pres,abs(p(i,j+2,k)-p(i,j-2,k)))
-             zeta = abs(dp(i,idx,k))/denom
-             z(i,idx,k) = min( 1.d0, max( 0.d0, dzcut*(zeta - zcut1) ) )
-             if (v(i,j-1,k)-v(i,j+1,k) .ge. 0.d0) then
-                tst = 1.d0
-             else
-                tst = 0.d0
-             endif
-             tmp = min(p(i,j+1,k),p(i,j-1,k))
-             if ((abs(dp(i,idx,k))/tmp).gt.shktst) then
-                chi(i,idx,k) = tst
-             else
-                chi(i,idx,k) = 0.d0
-             endif
-          enddo
-          do j = lo(2),hi(2)
-             idx = j-lo(2)+1
-             if(dp(i,idx,k).gt.0.d0)then
-                ishft = 1
-             else
-                ishft = -1
-             endif
-             ftmp = 1.d0 - &
-                  max(chi(i,idx-ishft,k)*z(i,idx-ishft,k),chi(i,idx,k)*z(i,idx,k))
-             flatn(i,j,k) = min( flatn(i,j,k), ftmp )
-          enddo
-       enddo
-    enddo
-    !$OMP END PARALLEL DO
-
-    deallocate(dp,z,chi)
-
-    ! z-direction flattening coef
-    allocate(dp (lo(1):hi(1),lo(2):hi(2),0:nmax-1))
-    allocate(z  (lo(1):hi(1),lo(2):hi(2),0:nmax-1))
-    allocate(chi(lo(1):hi(1),lo(2):hi(2),0:nmax-1))
-    !$OMP PARALLEL DO PRIVATE(i,j,k,idx,denom,zeta,tst,tmp,ishft,ftmp)
-    do j = lo(2),hi(2) 
-       do i = lo(1),hi(1)
-          do k = lo(3)-1,hi(3)+1
-             idx = k-lo(3)+1
-             dp(i,j,idx) = p(i,j,k+1) - p(i,j,k-1)
-             denom = max(small_pres,abs(p(i,j,k+2)-p(i,j,k-2)))
-             zeta = abs(dp(i,j,idx))/denom
-             z(i,j,idx) = min( 1.d0, max( 0.d0, dzcut*(zeta - zcut1) ) )
-             if (w(i,j,k-1)-w(i,j,k+1) .ge. 0.d0) then
-                tst = 1.d0
-             else
-                tst = 0.d0
-             endif
-             tmp = min(p(i,j,k+1),p(i,j,k-1))
-             if ((abs(dp(i,j,idx))/tmp).gt.shktst) then
-                chi(i,j,idx) = tst
-             else
-                chi(i,j,idx) = 0.d0
-             endif
-          enddo
-          do k = lo(3),hi(3)
-             idx = k-lo(3)+1
-             if(dp(i,j,idx).gt.0.d0)then
-                ishft = 1
-             else
-                ishft = -1
-             endif
-             ftmp = 1.d0 - &
-                  max(chi(i,j,idx-ishft)*z(i,j,idx-ishft),chi(i,j,idx)*z(i,j,idx))
-             flatn(i,j,k) = min( flatn(i,j,k), ftmp )
-          enddo
-       enddo
-    enddo
-    !$OMP END PARALLEL DO
-    
-    deallocate(dp,z,chi)
-
-  end subroutine uflaten
-
-! ::: 
-! ::: ------------------------------------------------------------------
-! ::: 
-
   subroutine divu(lo,hi,q,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3,dx,dy,dz, &
                   div,div_l1,div_l2,div_l3,div_h1,div_h2,div_h3)
     
     use meth_params_module, only : QU, QV, QW
+    use bl_constants_module
     
     implicit none
 
@@ -1368,19 +1105,19 @@ contains
        do j=lo(2),hi(2)+1
           do i=lo(1),hi(1)+1
              
-             ux = .25d0*( &
+             ux = FOURTH*( &
                     + q(i  ,j  ,k  ,QU) - q(i-1,j  ,k  ,QU) &
                     + q(i  ,j  ,k-1,QU) - q(i-1,j  ,k-1,QU) &
                     + q(i  ,j-1,k  ,QU) - q(i-1,j-1,k  ,QU) &
                     + q(i  ,j-1,k-1,QU) - q(i-1,j-1,k-1,QU) )/ dx
 
-             vy = .25d0*( &
+             vy = FOURTH*( &
                     + q(i  ,j  ,k  ,QV) - q(i  ,j-1,k  ,QV) &
                     + q(i  ,j  ,k-1,QV) - q(i  ,j-1,k-1,QV) &
                     + q(i-1,j  ,k  ,QV) - q(i-1,j-1,k  ,QV) &
                     + q(i-1,j  ,k-1,QV) - q(i-1,j-1,k-1,QV) )/ dy
 
-             wz = .25d0*( &
+             wz = FOURTH*( &
                     + q(i  ,j  ,k  ,QW) - q(i  ,j  ,k-1,QW) &
                     + q(i  ,j-1,k  ,QW) - q(i  ,j-1,k-1,QW) &
                     + q(i-1,j  ,k  ,QW) - q(i-1,j  ,k-1,QW) &
@@ -1409,6 +1146,7 @@ contains
     
     use network, only : nspec
     use meth_params_module, only : NVAR, URHO, UFS
+    use bl_constants_module
 
     implicit none
 
@@ -1430,14 +1168,14 @@ contains
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)+1
-             sum = 0.d0
+             sum = ZERO
              do n = UFS, UFS+nspec-1
                 sum = sum + flux1(i,j,k,n)
              end do
-             if (sum .ne. 0.d0) then
+             if (sum .ne. ZERO) then
                 fac = flux1(i,j,k,URHO) / sum
              else
-                fac = 1.d0
+                fac = ONE
              end if
              do n = UFS, UFS+nspec-1
                 flux1(i,j,k,n) = flux1(i,j,k,n) * fac
@@ -1451,14 +1189,14 @@ contains
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)+1
           do i = lo(1),hi(1)
-             sum = 0.d0
+             sum = ZERO
              do n = UFS, UFS+nspec-1
                 sum = sum + flux2(i,j,k,n)
              end do
-             if (sum .ne. 0.d0) then
+             if (sum .ne. ZERO) then
                 fac = flux2(i,j,k,URHO) / sum
              else
-                fac = 1.d0
+                fac = ONE
              end if
              do n = UFS, UFS+nspec-1
                 flux2(i,j,k,n) = flux2(i,j,k,n) * fac
@@ -1472,14 +1210,14 @@ contains
     do k = lo(3),hi(3)+1
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
-             sum = 0.d0
+             sum = ZERO
              do n = UFS, UFS+nspec-1
                 sum = sum + flux3(i,j,k,n)
              end do
-             if (sum .ne. 0.d0) then
+             if (sum .ne. ZERO) then
                 fac = flux3(i,j,k,URHO) / sum
              else
-                fac = 1.d0
+                fac = ONE
              end if
              do n = UFS, UFS+nspec-1
                 flux3(i,j,k,n) = flux3(i,j,k,n) * fac
@@ -1505,6 +1243,7 @@ contains
     use network, only : nspec, naux
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UFX, &
                                      UFA, small_dens, nadv
+    use bl_constants_module
 
     implicit none
 
@@ -1526,16 +1265,16 @@ contains
     
     allocate(fac(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
     
-    initial_mass = 0.d0
-      final_mass = 0.d0
+    initial_mass = ZERO
+      final_mass = ZERO
 
-    initial_eint = 0.d0
-      final_eint = 0.d0
+    initial_eint = ZERO
+      final_eint = ZERO
 
-    initial_eden = 0.d0
-      final_eden = 0.d0
+    initial_eden = ZERO
+      final_eden = ZERO
 
-    min_dens = 0.d0
+    min_dens = ZERO
 
     !$OMP PARALLEL DO PRIVATE(i,j,k,ii,jj,kk,min_dens) reduction(+:initial_mass,initial_eint,initial_eden)
     do k = lo(3),hi(3)
@@ -1546,7 +1285,7 @@ contains
              initial_eint = initial_eint + uout(i,j,k,UEINT)
              initial_eden = initial_eden + uout(i,j,k,UEDEN)
              
-             if (uout(i,j,k,URHO) .eq. 0.d0) then
+             if (uout(i,j,k,URHO) .eq. ZERO) then
                 
                 print *,'DENSITY EXACTLY ZERO AT CELL ',i,j,k
                 print *,'  in grid ',lo(1),lo(2),lo(3),hi(1),hi(2),hi(3)
@@ -1559,15 +1298,17 @@ contains
                    do jj = -1,1
                       do ii = -1,1
                          min_dens = min(min_dens,uin(i+ii,j+jj,k+kk,URHO))
-                         if ((ii.ne.0 .or. jj.ne.0 .or. kk.ne.0) .and. &
-                              uout(i+ii,j+jj,k+kk,URHO).gt.small_dens) &
-                              min_dens = min(min_dens,uout(i+ii,j+jj,k+kk,URHO))
+                         if (i+ii.ge.uout_l1 .and. j+jj.ge.uout_l2 .and. k+kk.ge.uout_l3 .and. &
+                             i+ii.le.uout_h1 .and. j+jj.le.uout_h2 .and. k+kk.le.uout_h3) then
+                              if (uout(i+ii,j+jj,k+kk,URHO).gt.small_dens) &
+                                min_dens = min(min_dens,uout(i+ii,j+jj,k+kk,URHO))
+                         endif
                       end do
                    end do
                 end do
                 
                 if (verbose .gt. 0) then
-                   if (uout(i,j,k,URHO) < 0.d0) then
+                   if (uout(i,j,k,URHO) < ZERO) then
                       print *,'   '
                       print *,'>>> RESETTING NEG.  DENSITY AT ',i,j,k
                       print *,'>>> FROM ',uout(i,j,k,URHO),' TO ',min_dens
@@ -1628,7 +1369,7 @@ contains
     ! in (final_mass - initial_mass) even if no cells have been reset.
     ! Guard against this by only taking the difference if any cell has been reset.
 
-    if ( min_dens /= 0.d0 ) then
+    if ( min_dens /= ZERO ) then
        mass_added = mass_added + final_mass - initial_mass
        eint_added = eint_added + final_eint - initial_eint
        eden_added = eden_added + final_eden - initial_eden
@@ -1646,6 +1387,7 @@ contains
 
     use network, only : nspec
     use meth_params_module, only : NVAR, URHO, UFS
+    use bl_constants_module
 
     implicit none
 
@@ -1661,14 +1403,14 @@ contains
     do k = lo(3),hi(3)
        do j = lo(2),hi(2)
           do i = lo(1),hi(1)
-             sum = 0.d0
+             sum = ZERO
              do n = UFS, UFS+nspec-1
                 sum = sum + u(i,j,k,n)
              end do
-             if (sum .ne. 0.d0) then
+             if (sum .ne. ZERO) then
                 fac = u(i,j,k,URHO) / sum
              else
-                fac = 1.d0
+                fac = ONE
              end if
              do n = UFS, UFS+nspec-1
                 u(i,j,k,n) = u(i,j,k,n) * fac

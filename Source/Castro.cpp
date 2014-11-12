@@ -99,7 +99,6 @@ Real         Castro::difmag        = 0.1;
 Real         Castro::small_dens    = -1.e200;
 Real         Castro::small_temp    = -1.e200;
 Real         Castro::small_pres    = -1.e200;
-Real         Castro::gamma         =  0.0;
 
 int          Castro::do_hydro = -1;
 int          Castro::do_react = -1;
@@ -127,7 +126,7 @@ Radiation*   Castro::radiation = 0;
 
 #ifdef ROTATION
 int          Castro::do_rotation = -1;
-Real         Castro::rotational_frequency = 0.0;
+Real         Castro::rotational_period = 0.0;
 #endif
 
 int          Castro::grown_factor = 1;
@@ -138,13 +137,26 @@ int          Castro::normalize_species = 0;
 int          Castro::fix_mass_flux = 0;
 int          Castro::allow_negative_energy = 1;
 int          Castro::do_special_tagging = 0;
+
 int          Castro::ppm_type = 1;
 int          Castro::ppm_reference = 1;
 int          Castro::ppm_trace_grav = 0;
 int          Castro::ppm_temp_fix = 0;
+int          Castro::ppm_tau_in_tracing = 0;
+int          Castro::ppm_reference_edge_limit = 1;
+int          Castro::ppm_reference_eigenvectors = 0;
+
 int          Castro::use_colglaz = 0;
 int          Castro::cg_maxiter  = 12;
 Real         Castro::cg_tol      = 1.0e-5;
+
+int          Castro::use_flattening = 1;
+int          Castro::ppm_flatten_before_integrals = 0;
+
+int          Castro::transverse_use_eos = 0;
+int          Castro::transverse_reset_density = 0;
+int          Castro::transverse_reset_rhoe = 0;
+
 int          Castro::use_pslope  = 1;
 int          Castro::grav_source_type = 2;
 int          Castro::spherical_star = 0;
@@ -238,7 +250,6 @@ Castro::read_params ()
     pp.query("small_dens",small_dens);
     pp.query("small_temp",small_temp);
     pp.query("small_pres",small_pres);
-    pp.query("gamma",gamma);
 
 #ifdef POINTMASS
     pp.get("point_mass",point_mass);
@@ -360,11 +371,21 @@ Castro::read_params ()
     pp.query("fix_mass_flux",fix_mass_flux);
     pp.query("allow_negative_energy",allow_negative_energy);
     pp.query("do_special_tagging",do_special_tagging);
+
     pp.query("ppm_type", ppm_type);
     pp.query("ppm_reference", ppm_reference);
     pp.query("ppm_trace_grav", ppm_trace_grav);
     pp.query("ppm_temp_fix", ppm_temp_fix);
+    pp.query("ppm_tau_in_tracing", ppm_tau_in_tracing);
+    pp.query("ppm_reference_edge_limit", ppm_reference_edge_limit);
+    pp.query("ppm_flatten_before_integrals", ppm_flatten_before_integrals);
+    pp.query("ppm_reference_eigenvectors", ppm_reference_eigenvectors);
     pp.query("use_colglaz",use_colglaz);
+    pp.query("use_flattening",use_flattening);
+    pp.query("transverse_use_eos",transverse_use_eos);
+    pp.query("transverse_reset_density",transverse_reset_density);
+    pp.query("transverse_reset_rhoe",transverse_reset_rhoe);
+
     pp.query("cg_maxiter",cg_maxiter);
     pp.query("cg_tol",cg_tol);
     pp.query("use_pslope",use_pslope);
@@ -391,7 +412,28 @@ Castro::read_params ()
         std::cerr << "ppm_trace_grav = 1 not implemented for ppm_type = 0 \n";
         BoxLib::Error();
       }
+
+
+    // ppm_flatten_before_integrals is only done for ppm_type != 0
+    if (ppm_type == 0 && ppm_flatten_before_integrals > 0)
+      {
+        std::cerr << "ppm_flatten_before_integrals > 0 not implemented for ppm_type != 0 \n";
+        BoxLib::Error();
+      }
 	
+
+    if (ppm_temp_fix > 0 && BL_SPACEDIM == 1)
+      {
+        std::cerr << "ppm_temp_fix > 0 not implemented in 1-d \n";
+        BoxLib::Error();
+      }
+
+    if (ppm_tau_in_tracing == 1 && BL_SPACEDIM == 1)
+      {
+        std::cerr << "ppm_tau_in_tracing == 1 not implemented in 1-d \n";
+        BoxLib::Error();
+      }
+
 
     // Make sure not to call refluxing if we're not actually doing any hydro.
     if (do_hydro == 0) do_reflux = 0;
@@ -426,7 +468,8 @@ Castro::read_params ()
 
 #ifdef ROTATION
     pp.get("do_rotation",do_rotation);
-    if (do_rotation) pp.get("rotational_frequency",rotational_frequency);
+    if (do_rotation) pp.get("rotational_period",rotational_period);
+    else pp.query("rotational_period",rotational_period);
 #if (BL_SPACEDIM == 1)
       if (do_rotation) {
 	std::cerr << "ERROR:Castro::Rotation not implemented in 1d\n";
@@ -669,6 +712,9 @@ Castro::initData ()
     MultiFab &Rad_new = get_new_data(Rad_Type);
     // extra state quantity for graphic debugging:
     MultiFab &Test_new = get_new_data(Test_Type);
+    // For Radiation, S_new has one ghost cell.  
+    // So let's set all components to zero.
+    S_new.setVal(0.);
 #endif
 
 #ifdef REACTIONS
@@ -718,6 +764,8 @@ Castro::initData ()
           const Box& box = mfi.validbox();
           const int* lo  = box.loVect();
           const int* hi  = box.hiVect();
+
+	  Rad_new[i].setVal(0.0);
 
 	  BL_FORT_PROC_CALL(CA_INITRAD,ca_initrad)
 	      (level, cur_time, lo, hi, Radiation::nGroups,

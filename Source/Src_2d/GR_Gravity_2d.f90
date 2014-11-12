@@ -7,9 +7,10 @@
                                      radial_pres,problo, &
                                      n1d,drdxfac,level)
       use probdata_module
-      use meth_params_module, only : NVAR, URHO, UEINT, UTEMP, UFS
+      use meth_params_module, only : NVAR, URHO, UEINT, UTEMP, UFS, UFX
       use eos_module
-      use network, only : nspec
+      use network, only : nspec, naux
+      use bl_constants_module
 
       implicit none
 
@@ -29,17 +30,18 @@
       double precision :: xc,yc,r
       double precision :: fac,xx,yy,dx_frac,dy_frac,vol_frac
       double precision :: lo_i,lo_j,rlo,rhi
-      double precision :: rho, e, G, P, C, T, dpdr, dpde, X(nspec)
+
+      type (eos_t) :: eos_state
 
       fac  = dble(drdxfac)
       dx_frac = dx(1) / fac
       dy_frac = dx(2) / fac
 
       do j = lo(2), hi(2)
-         yc = problo(2) + (dble(j)+0.50d0) * dx(2) - center(2)
+         yc = problo(2) + (dble(j)+HALF) * dx(2) - center(2)
 
          do i = lo(1), hi(1)
-            xc = problo(1) + (dble(i)+0.50d0) * dx(1) - center(1)
+            xc = problo(1) + (dble(i)+HALF) * dx(1) - center(1)
 
             r = sqrt(xc**2  + yc**2)
             index = int(r/dr)
@@ -57,34 +59,33 @@
 
             else
 
-               rho =  var(i,j,URHO)
-               e   =  var(i,j,UEINT) / rho
-               T   =  var(i,j,UTEMP)
-               do n = 1, nspec
-                  X(n)= var(i,j,UFS+n-1)/rho
-               enddo
+               eos_state % rho = var(i,j,URHO)
+               eos_state % e   = var(i,j,UEINT) / rho
+               eos_state % T   = var(i,j,UTEMP)
+               eos_state % xn  = var(i,j,UFS:UFS+nspec-1) / rho 
+               eos_state % aux = var(i,j,UFX:UFX+naux-1) / rho
 
                ! Compute pressure from the EOS
                pt_index(1) = i
                pt_index(2) = j
-               call eos_given_ReX(G, P, C, T, dpdr, dpde, rho, e, X, pt_index=pt_index)
+               call eos(eos_input_re, eos_state, pt_index = pt_index)
 
                ! Note that we assume we are in r-z coordinates in 2d or we wouldn't be 
                !      doing monopole gravity
                lo_i = problo(1) + dble(i)*dx(1) - center(1)
                lo_j = problo(2) + dble(j)*dx(2) - center(2)
                do ii = 0,drdxfac-1
-                  xx  = lo_i + (dble(ii  )+0.5d0)*dx_frac
-                  rlo = lo_i +  dble(ii  )       *dx_frac
-                  rhi = lo_i +  dble(ii+1)       *dx_frac
-                  vol_frac = (rhi**2 - rlo**2)  * dy_frac
+                  xx  = lo_i + (dble(ii  )+HALF)*dx_frac
+                  rlo = lo_i +  dble(ii  )      *dx_frac
+                  rhi = lo_i +  dble(ii+1)      *dx_frac
+                  vol_frac = (rhi**2 - rlo**2)  *dy_frac
                   do jj = 0,drdxfac-1
-                     yy = lo_j + (dble(jj)+0.5d0)*dy_frac
+                     yy = lo_j + (dble(jj)+HALF)*dy_frac
                       r = sqrt(xx**2  + yy**2)
                      index = int(r/dr)
 
                      if (index .le. n1d-1) then
-                        radial_pres(index) = radial_pres(index) + vol_frac * P
+                        radial_pres(index) = radial_pres(index) + vol_frac * eos_state % P
                      end if
 
                   end do

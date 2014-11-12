@@ -46,14 +46,18 @@ BL_FORT_PROC_DECL(SET_METHOD_PARAMS,set_method_params)
      const Real& small_dens, const Real& small_temp,
      const Real& small_pres, const int& allow_negative_energy,
      const int& ppm_type, const int& ppm_reference, 
-     const int& ppm_trace_grav, const int& ppm_temp_fix,
-     const int& use_colglaz, 
+     const int& ppm_trace_grav, const int& ppm_temp_fix, 
+     const int& ppm_tau_in_tracing, const int& ppm_reference_edge_limit, 
+     const int& ppm_flatten_before_integrals,
+     const int& ppm_reference_eigenvectors,
+     const int& use_colglaz, const int& use_flattening,
+     const int& transverse_use_eos, const int& transverse_reset_density, const int& transverse_reset_rhoe,
      const int& cg_maxiter, const Real& cg_tol,
      const int& use_pslope, const int& grav_source_type,
-     const int& do_sponge, const Real& gamma_in,
+     const int& do_sponge, 
      const int& normalize_species,
      const int& fix_mass_flux, const int& use_sgs,
-     const Real& rotational_frequency, const Real& const_grav);
+     const Real& rotational_period, const Real& const_grav);
 
 BL_FORT_PROC_DECL(SET_PROBLEM_PARAMS,set_problem_params)
     (const int& dm,
@@ -472,34 +476,6 @@ BL_FORT_PROC_DECL(CA_AUXUPDATE,ca_auxupdate)
      const int* lo, const int* hi,
      const Real * dt);
 #endif
-
-BL_FORT_PROC_DECL(CA_COMPUTE_C_V,ca_compute_c_v)
-  (const int lo[], const int hi[],
-   const BL_FORT_FAB_ARG(cv),
-   const BL_FORT_FAB_ARG(ye),
-   const BL_FORT_FAB_ARG(temp),
-   const BL_FORT_FAB_ARG(state));
-
-BL_FORT_PROC_DECL(CA_GET_RHOE,ca_get_rhoe)
-  (const int lo[], const int hi[],
-   const BL_FORT_FAB_ARG(rhoe),
-   const BL_FORT_FAB_ARG(temp),
-   const BL_FORT_FAB_ARG(ye),
-   const BL_FORT_FAB_ARG(state));
-
-BL_FORT_PROC_DECL(CA_COMPUTE_TEMP_FOR_RAD,ca_compute_temp_for_rad)
-  (const int lo[], const int hi[],
-   const BL_FORT_FAB_ARG(temp),
-   const BL_FORT_FAB_ARG(ye),
-   const BL_FORT_FAB_ARG(tempGuess),
-   const BL_FORT_FAB_ARG(state));
-
-BL_FORT_PROC_DECL(CA_COMPUTE_TEMP_GIVEN_REYE,ca_compute_temp_given_reye)
-  (const int lo[], const int hi[],
-   BL_FORT_FAB_ARG(temp),
-   const BL_FORT_FAB_ARG(rhoe),
-   const BL_FORT_FAB_ARG(ye),
-   const BL_FORT_FAB_ARG(state));
 
 #if (BL_SPACEDIM > 1)
 BL_FORT_PROC_DECL(CA_COMPUTE_AVGSTATE,ca_compute_avgstate)

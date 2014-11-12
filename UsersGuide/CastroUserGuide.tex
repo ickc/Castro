@@ -185,7 +185,11 @@
 \newcommand{\rbt}{\widetilde{\rb}}
 \newcommand{\ob}{\boldsymbol{\omega}}
 \newcommand{\nablab}{\boldsymbol{\nabla}}
-\newcommand{\castro}{\sf CASTRO}
+
+% codes
+\newcommand{\castro}{{\sf Castro}}
+\newcommand{\boxlib}{{\sf BoxLib}}
+\newcommand{\yt}{{\sf yt}}
 
 
 %------------------------------------------------------------------------------
@@ -225,19 +229,25 @@
 \clearpage
 
 \listoffigures
-\addcontentsline{toc}{part}{list of figures}
+\addcontentsline{toc}{chapter}{list of figures}
 
 \clearpage
 
 \listoftables
-\addcontentsline{toc}{part}{list of tables}
+\addcontentsline{toc}{chapter}{list of tables}
+
+\clearpage
+
+\chapter*{Preface}
+\chaptermark{Preface}
+\addcontentsline{toc}{chapter}{preface}
+
+\input Introduction/CastroIntroduction
 
 \clearpage
 
 \mainmatter
 
-\chapter{Introduction}
-\input Introduction/CastroIntroduction
 
 \chapter{Getting Started}
 \input GettingStarted/CastroGettingStarted

@@ -502,7 +502,7 @@ protected:
 
     Real sumDerive (const std::string& name, Real time);
 
-    virtual void sum_integrated_quantities ();
+    void sum_integrated_quantities ();
 
     void write_info ();
 
@@ -572,11 +572,21 @@ protected:
     static int       fix_mass_flux;
     static int       allow_negative_energy;
     static int       do_special_tagging;
+
     static int       ppm_type;
     static int       ppm_reference;
     static int       ppm_trace_grav;
     static int       ppm_temp_fix;
+    static int       ppm_tau_in_tracing;
+    static int       ppm_reference_edge_limit;
+    static int       ppm_flatten_before_integrals;
+    static int       ppm_reference_eigenvectors;
     static int       use_colglaz;
+    static int       use_flattening;
+    static int       transverse_use_eos;
+    static int       transverse_reset_density;
+    static int       transverse_reset_rhoe;
+
     static int       cg_maxiter;
     static Real      cg_tol;
     static int       use_pslope;
@@ -587,7 +597,6 @@ protected:
     static Real      small_dens;
     static Real      small_temp;
     static Real      small_pres;
-    static Real      gamma;
 
     static std::string      job_name;
 
@@ -596,7 +605,7 @@ protected:
     static Real      previousCPUTimeUsed;
     static Real      startCPUTime;
 
-    Real getCPUTime();
+    static Real getCPUTime();
 
 #ifdef POINTMASS
     static Real      point_mass;
@@ -680,7 +689,7 @@ protected:
 
 #ifdef ROTATION
   static int do_rotation;
-  static Real rotational_frequency;
+  static Real rotational_period;
 #endif
 
 /* problem-specific includes */

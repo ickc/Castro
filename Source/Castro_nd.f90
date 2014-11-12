@@ -261,12 +261,16 @@
                                    allow_negative_energy_in, &
                                    ppm_type_in,ppm_reference_in, &
                                    ppm_trace_grav_in, ppm_temp_fix_in, &
-                                   use_colglaz_in, &
+                                   ppm_tau_in_tracing_in, ppm_reference_edge_limit_in, &
+                                   ppm_flatten_before_integrals_in, &
+                                   ppm_reference_eigenvectors_in, &
+                                   use_colglaz_in, use_flattening_in, &
+                                   transverse_use_eos_in, transverse_reset_density_in, transverse_reset_rhoe_in, &
                                    cg_maxiter_in, cg_tol_in, &
                                    use_pslope_in, &
                                    grav_source_type_in, &
-                                   do_sponge_in,gamma_in,normalize_species_in,fix_mass_flux_in,use_sgs, &
-                                   rot_freq_in, const_grav_in)
+                                   do_sponge_in,normalize_species_in,fix_mass_flux_in,use_sgs, &
+                                   rot_period_in, const_grav_in)
 !                                  phys_bc_lo,phys_bc_hi
 
         ! Passing data from C++ into f90
@@ -283,17 +287,22 @@
         integer, intent(in) :: numadv
         integer, intent(in) :: allow_negative_energy_in, ppm_type_in
         integer, intent(in) :: ppm_reference_in, ppm_trace_grav_in, ppm_temp_fix_in
-        integer, intent(in) :: use_colglaz_in, use_pslope_in, grav_source_type_in
+        integer, intent(in) :: ppm_tau_in_tracing_in, ppm_reference_edge_limit_in
+        integer, intent(in) :: ppm_flatten_before_integrals_in
+        integer, intent(in) :: ppm_reference_eigenvectors_in
+        integer, intent(in) :: use_colglaz_in, use_flattening_in
+        integer, intent(in) :: transverse_use_eos_in, transverse_reset_density_in, transverse_reset_rhoe_in
+        integer, intent(in) :: use_pslope_in, grav_source_type_in
         integer, intent(in) :: cg_maxiter_in
         double precision, intent(in) :: cg_tol_in
         integer, intent(in) :: do_sponge_in
         double precision, intent(in) :: difmag_in
         double precision, intent(in) :: small_dens_in, small_temp_in, small_pres_in
-        double precision, intent(in) :: gamma_in
         integer, intent(in) :: normalize_species_in
         integer, intent(in) :: fix_mass_flux_in
         integer, intent(in) :: use_sgs
-        double precision, intent(in) :: rot_freq_in, const_grav_in
+        double precision, intent(in) :: rot_period_in, const_grav_in
+        integer :: iadv, ispec
 
         integer             :: QLAST
 
@@ -301,8 +310,11 @@
 
         iorder = 2 
 
-!        difmag = 0.1d0
         difmag = difmag_in
+
+        !---------------------------------------------------------------------
+        ! conserved state components
+        !---------------------------------------------------------------------
 
         ! NTHERM: number of thermodynamic variables
         ! NVAR  : number of total variables in initial system
@@ -341,12 +353,17 @@
           UFX = 1
         end if
 
-        ! QTHERM: number of primitive variables, which includes pressure (+1), but
-        !         not little e (-1)
-        ! QVAR  : number of total variables in primitive form
 
-        QTHERM = NTHERM
-        if (use_colglaz_in == 1) QTHERM = QTHERM + 2
+        !---------------------------------------------------------------------
+        ! primitive state components
+        !---------------------------------------------------------------------
+
+        ! QTHERM: number of primitive variables: rho, game, p, (rho e), T
+        !         + dm velocity components + 1 SGS components (if defined)
+        ! QVAR  : number of total variables in primitive form
+      
+        QTHERM = NTHERM + 1  ! here the +1 is for QGAME always defined in primitive mode
+                             ! the SGS component is accounted for already in NTHERM
 
         QVAR = QTHERM + nspec + naux + numadv
 
@@ -366,11 +383,9 @@
            QLAST = 4
         end if
 
-        if (use_colglaz_in == 1) then
-           QGAME   = QLAST + 1
-           QGAMC   = QLAST + 2
-           QLAST   = QGAMC
-        endif
+        ! we'll carry this around as an potential alternate to (rho e)
+        QGAME   = QLAST + 1
+        QLAST   = QGAME
 
         QPRES   = QLAST + 1
         QREINT  = QLAST + 2
@@ -387,7 +402,7 @@
           QFA = QTHERM + 1
           QFS = QFA + numadv
         else 
-          QFA = 1
+          QFA = 1   ! density
           QFS = QTHERM + 1
         end if
         if (naux .ge. 1) then
@@ -396,36 +411,71 @@
           QFX = 1
         end if
 
+        ! easy indexing for the passively advected quantities.  This
+        ! lets us loop over all four groups (SGS, advected, species, aux)
+        ! in a single loop.
+        allocate(qpass_map(QVAR))
+        allocate(upass_map(NVAR))
+        npassive = 0
+        if (QESGS > -1) then
+           upass_map(1) = UESGS
+           qpass_map(1) = QESGS
+           npassive = 1
+        endif
+        do iadv = 1, nadv
+           upass_map(npassive + iadv) = UFA + iadv - 1
+           qpass_map(npassive + iadv) = QFA + iadv - 1
+        enddo
+        npassive = npassive + nadv
+        if(QFS > -1) then
+           do ispec = 1, nspec+naux
+              upass_map(npassive + ispec) = UFS + ispec - 1
+              qpass_map(npassive + ispec) = QFS + ispec - 1
+           enddo
+           npassive = npassive + nspec + naux
+        endif
+        
+
+         
+        !---------------------------------------------------------------------
+        ! other initializations
+        !---------------------------------------------------------------------
+
         if (small_pres_in > 0.d0) then
           small_pres = small_pres_in
         else
           small_pres = 1.d-8
         end if
 
-        if (gamma_in .gt. 0.d0) then
-           call eos_init(small_dens=small_dens_in, small_temp=small_temp_in, gamma_in=gamma_in)
-        else
-           call eos_init(small_dens=small_dens_in, small_temp=small_temp_in)
-        end if
+        call eos_init(small_dens=small_dens_in, small_temp=small_temp_in)
 
         call eos_get_small_dens(small_dens)
         call eos_get_small_temp(small_temp)
 
-        allow_negative_energy = allow_negative_energy_in
-        ppm_type              = ppm_type_in
-        ppm_reference         = ppm_reference_in
-        ppm_trace_grav        = ppm_trace_grav_in
-        ppm_temp_fix          = ppm_temp_fix_in
-        use_colglaz           = use_colglaz_in
-        cg_tol                = cg_tol_in
-        cg_maxiter            = cg_maxiter_in
-        use_pslope            = use_pslope_in
-        grav_source_type      = grav_source_type_in
-        do_sponge             = do_sponge_in
-        normalize_species     = normalize_species_in
-        fix_mass_flux         = fix_mass_flux_in
-        rot_freq              = rot_freq_in
-        const_grav            = const_grav_in
+        allow_negative_energy      = allow_negative_energy_in
+        ppm_type                   = ppm_type_in
+        ppm_reference              = ppm_reference_in
+        ppm_trace_grav             = ppm_trace_grav_in
+        ppm_temp_fix               = ppm_temp_fix_in
+        ppm_tau_in_tracing         = ppm_tau_in_tracing_in
+        ppm_reference_edge_limit   = ppm_reference_edge_limit_in
+        ppm_flatten_before_integrals = ppm_flatten_before_integrals_in
+        ppm_reference_eigenvectors = ppm_reference_eigenvectors_in
+        use_colglaz                = use_colglaz_in
+        use_flattening             = use_flattening_in
+        transverse_use_eos         = transverse_use_eos_in
+        transverse_reset_density   = transverse_reset_density_in
+        transverse_reset_rhoe      = transverse_reset_rhoe_in
+
+        cg_tol                     = cg_tol_in
+        cg_maxiter                 = cg_maxiter_in
+        use_pslope                 = use_pslope_in
+        grav_source_type           = grav_source_type_in
+        do_sponge                  = do_sponge_in
+        normalize_species          = normalize_species_in
+        fix_mass_flux              = fix_mass_flux_in
+        rot_period                 = rot_period_in
+        const_grav                 = const_grav_in
         
 
 !       allocate(outflow_bc_lo(dm))

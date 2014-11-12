@@ -123,9 +123,19 @@ Castro::advance_hydro (Real time,
 #endif
     }
 
-    for (int k = 0; k < NUM_STATE_TYPE; k++) {
-        state[k].allocOldData();
-        state[k].swapTimeLevels(dt);
+    // Swap the new data from the last timestep into the old state data.
+    // If we're on level 0, do it for all levels below this one as well.
+    // Or, if we're on a later iteration at a finer timestep, swap for all
+    // lower time levels as well.
+
+    if (level == 0 || iteration > 1) {
+        for (int lev = level; lev <= finest_level; lev++) {
+            Real dt_lev = parent->dtLevel(lev);
+            for (int k = 0; k < NUM_STATE_TYPE; k++) {
+	        getLevel(lev).state[k].allocOldData();
+                getLevel(lev).state[k].swapTimeLevels(dt_lev);
+            }
+        } 
     }
 
 #ifdef SGS
@@ -161,10 +171,16 @@ Castro::advance_hydro (Real time,
     // make sure these are filled to avoid check/plot file errors:
     get_old_data(Test_Type).setVal(0.0);
     get_new_data(Test_Type).setVal(0.0);
-    if (!do_radiation) {
+    if (do_radiation) {
+      get_old_data(Rad_Type).setBndry(0.0);
+      get_new_data(Rad_Type).setBndry(0.0);      
+    }
+    else {
       get_old_data(Rad_Type).setVal(0.0);
       get_new_data(Rad_Type).setVal(0.0);
     }
+    S_old.setBndry(0.0);
+    S_new.setBndry(0.0);
 #endif
 
 #if (BL_SPACEDIM > 1)
@@ -179,9 +195,19 @@ Castro::advance_hydro (Real time,
 
 #ifdef GRAVITY
     if (do_grav) {
-       if (do_reflux && level < finest_level && gravity->get_gravity_type() == "PoissonGrav")
-           gravity->zeroPhiFluxReg(level+1);
-       gravity->swapTimeLevels(level);
+
+       // Swap the old and new data at this level and all finer levels,
+       // and zero out the flux registers. 
+
+       if (level == 0 || iteration > 1) {
+	   for (int lev = level; lev < finest_level; lev++) {
+               if (do_reflux && gravity->get_gravity_type() == "PoissonGrav")
+                   gravity->zeroPhiFluxReg(lev+1);
+           }
+
+           for (int lev = level; lev <= finest_level; lev++)
+               gravity->swapTimeLevels(lev);
+       }
 
        grav_vec_old.define(grids,BL_SPACEDIM,4,Fab_allocate); 
 
@@ -400,7 +426,12 @@ Castro::advance_hydro (Real time,
 	Erborder[fpi].copy(fpi());
       }
 
-      radiation->compute_limiter(level, grids, Sborder, Erborder, lamborder);
+      if (radiation->pure_hydro) {
+	  lamborder.setVal(0.0, NUM_GROW);
+      }
+      else {
+	  radiation->compute_limiter(level, grids, Sborder, Erborder, lamborder);
+      }
 
       int nstep_fsp = -1;
 
@@ -728,10 +759,14 @@ Castro::advance_hydro (Real time,
 
     ParallelDescriptor::ReduceRealMax(courno);
 
-    if (courno > 1.0) {
-      if (ParallelDescriptor::IOProcessor()) 
-	std::cout << "OOPS -- EFFECTIVE CFL AT THIS LEVEL " << level << " IS " << courno << '\n';
-      BoxLib::Abort("CFL is too high at this level -- go back to a checkpoint and restart with lower cfl number");
+    // Note that we can wrap this Abort call inside the IOProcessor test because the courno test is
+    //      identical on all processors
+    if (ParallelDescriptor::IOProcessor()) 
+    {
+       if (courno > 1.0) {
+  	  std::cout << "OOPS -- EFFECTIVE CFL AT THIS LEVEL " << level << " IS " << courno << '\n';
+          BoxLib::Abort("CFL is too high at this level -- go back to a checkpoint and restart with lower cfl number");
+       }
     }
     
     dt_new = dt/courno;
@@ -994,10 +1029,16 @@ Castro::advance_no_hydro (Real time,
     // Make sure these are filled to avoid check/plot file errors:
     get_old_data(Test_Type).setVal(0.0);
     get_new_data(Test_Type).setVal(0.0);
-    if (!do_radiation) {
+    if (do_radiation) {
+      get_old_data(Rad_Type).setBndry(0.0);
+      get_new_data(Rad_Type).setBndry(0.0);      
+    }
+    else {
       get_old_data(Rad_Type).setVal(0.0);
       get_new_data(Rad_Type).setVal(0.0);
     }
+    S_old.setBndry(0.0);
+    S_new.setBndry(0.0);
 #endif
 
 #if (BL_SPACEDIM > 1)
