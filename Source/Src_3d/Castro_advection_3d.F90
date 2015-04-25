@@ -1,7 +1,9 @@
 module advection_module
 
-  implicit none
+  use align_array_module, only : alignbyte, nalign_double
 
+  implicit none
+  
   private
 
   public umeth3d, ctoprim, divu, consup, enforce_minimum_density, normalize_new_species, &
@@ -123,6 +125,7 @@ contains
     double precision, allocatable::fxy(:,:,:,:),fxz(:,:,:,:)
     double precision, allocatable::fyx(:,:,:,:),fyz(:,:,:,:)
     double precision, allocatable::fzx(:,:,:,:),fzy(:,:,:,:)
+    double precision, allocatable::flxtmp(:,:,:,:)
     
     double precision, allocatable:: pgdnvx(:,:,:), ugdnvx(:,:,:), gegdnvx(:,:,:)
     double precision, allocatable:: pgdnvxf(:,:,:), ugdnvxf(:,:,:), gegdnvxf(:,:,:)
@@ -146,96 +149,119 @@ contains
     
     type (eos_t) :: eos_state
 
-    allocate ( pgdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    integer :: iloalg, ihialg, nx, rem
 
-    allocate ( pgdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvxf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+!dir$ attributes align : alignbyte :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
+!dir$ attributes align : alignbyte :: qmyz,qpyz,qmzx,qpzx,qmzy,qpzy,qxl,qxr,qyl,qyr,qzl,qzr,fx,fy,fz
+!dir$ attributes align : alignbyte :: fxy,fxz,fyx,fyz,fzx,fzy,flxtmp,pgdnvx,ugdnvx,gegdnvx,pgdnvxf,ugdnvxf,gegdnvxf
+!dir$ attributes align : alignbyte :: pgdnvtmpx,ugdnvtmpx,gegdnvtmpx,pgdnvy,ugdnvy,gegdnvy,pgdnvyf,ugdnvyf,gegdnvyf
+!dir$ attributes align : alignbyte :: pgdnvtmpy,ugdnvtmpy,gegdnvtmpy,pgdnvz,ugdnvz,gegdnvz,pgdnvzf,ugdnvzf,gegdnvzf
+!dir$ attributes align : alignbyte :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
 
-    allocate ( pgdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvtmpx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    ! before padding
+    iloalg = ilo1-1
+    ihialg = ihi1+2
+
+    ! after padding
+    iloalg = min(iloalg, ilo1-nalign_double)
+    nx = ihialg - iloalg + 1  ! We want this to be a multiple of nalign_double
+    rem = modulo(nx, nalign_double)
+    if (rem .ne. 0) then
+       ihialg = ihialg + (nalign_double-rem)
+    end if
+
+    allocate ( pgdnvx(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvx(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvx(iloalg:ihialg,ilo2-1:ihi2+2,2))
+
+    allocate ( pgdnvxf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvxf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvxf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+
+    allocate ( pgdnvtmpx(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpx(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpx(iloalg:ihialg,ilo2-1:ihi2+2,2))
     
-    allocate ( pgdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( gegdnvy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvy(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvy(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( gegdnvy(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvyf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvyf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvyf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvyf(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvtmpy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvtmpy(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpy(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpy(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvz(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvz(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvz(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvzf(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvzf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvzf(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvzf(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvtmpz1(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvtmpz1(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpz1(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpz1(iloalg:ihialg,ilo2-1:ihi2+2,2))
 
-    allocate ( pgdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate ( ugdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
-    allocate (gegdnvtmpz2(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2))
+    allocate ( pgdnvtmpz2(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate ( ugdnvtmpz2(iloalg:ihialg,ilo2-1:ihi2+2,2))
+    allocate (gegdnvtmpz2(iloalg:ihialg,ilo2-1:ihi2+2,2))
     
-    allocate ( dqx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( dqy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( dqz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( dqx(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( dqy(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( dqz(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
     
-    allocate ( qxm(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qxp(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qxm(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qxp(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmxy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpxy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmxy(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpxy(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmxz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpxz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmxz(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpxz(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qym(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qyp(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qym(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qyp(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmyx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpyx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmyx(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpyx(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmyz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpyz(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmyz(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpyz(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qzm(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qzp(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qzm(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qzp(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qxl(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qxr(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qyl(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qyr(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qzl(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qzr(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qxl(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qxr(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qyl(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qyr(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qzl(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qzr(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmzx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpzx(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmzx(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpzx(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( qmzy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
-    allocate ( qpzy(ilo1-1:ihi1+2,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qmzy(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
+    allocate ( qpzy(iloalg:ihialg,ilo2-1:ihi2+2,2,QVAR))
 
-    allocate ( fx(ilo1:ihi1+1,ilo2-1:ihi2+1,2,NVAR))
-    allocate ( fy(ilo1-1:ihi1+1,ilo2:ihi2+1,2,NVAR))
-    allocate ( fz(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,NVAR))
+    allocate ( fx(iloalg:ihialg,ilo2-1:ihi2+1,2,NVAR))
+    allocate ( fy(iloalg:ihialg,ilo2:ihi2+1,2,NVAR))
+    allocate ( fz(iloalg:ihialg,ilo2-1:ihi2+1,2,NVAR))
 
-    allocate ( fxy(ilo1:ihi1+1,ilo2-1:ihi2+1,2,NVAR))
-    allocate ( fxz(ilo1:ihi1+1,ilo2-1:ihi2+1,2,NVAR))
+    allocate ( fxy(iloalg:ihialg,ilo2-1:ihi2+1,2,NVAR))
+    allocate ( fxz(iloalg:ihialg,ilo2-1:ihi2+1,2,NVAR))
 
-    allocate ( fyx(ilo1-1:ihi1+1,ilo2:ihi2+1,2,NVAR))
-    allocate ( fyz(ilo1-1:ihi1+1,ilo2:ihi2+1,2,NVAR))
+    allocate ( fyx(iloalg:ihialg,ilo2:ihi2+1,2,NVAR))
+    allocate ( fyz(iloalg:ihialg,ilo2:ihi2+1,2,NVAR))
 
-    allocate ( fzx(ilo1:ihi1,ilo2-1:ihi2+1,2,NVAR))
-    allocate ( fzy(ilo1-1:ihi1+1,ilo2:ihi2,2,NVAR))
+    allocate ( fzx(iloalg:ihialg,ilo2-1:ihi2+1,2,NVAR))
+    allocate ( fzy(iloalg:ihialg,ilo2:ihi2,2,NVAR))
+
+    allocate ( flxtmp(iloalg:ihialg,ilo2:ihi2+1,1,NVAR))
 
     ! x-index, y-index, z-index, dim, characteristics, variables
     allocate ( Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,QVAR))
@@ -386,7 +412,7 @@ contains
           ! Compute U_x and U_y at kc (k3d)
           call tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
-                           qxm,qxp,qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                           qxm,qxp,qym,qyp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                            gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            ilo1,ilo2,ihi1,ihi2,dt,kc,k3d)
 
@@ -394,67 +420,67 @@ contains
 
           ! Compute all slopes at kc (k3d)
           call uslope(q,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                      dqx,dqy,dqz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                      dqx,dqy,dqz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                       ilo1,ilo2,ihi1,ihi2,kc,k3d,QVAR)
           
           if (use_pslope .eq. 1) &
                call pslope(q(:,:,:,QPRES),q(:,:,:,QRHO), &
                            flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            dqx(:,:,:,QPRES),dqy(:,:,:,QPRES),dqz(:,:,:,QPRES), &
-                           ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                           iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                            grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
                            ilo1,ilo2,ihi1,ihi2,kc,k3d,dx,dy,dz)
 
           ! Compute U_x and U_y at kc (k3d)
           call tracexy(q,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                       dqx,dqy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       qxm,qxp,qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                       dqx,dqy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                       qxm,qxp,qym,qyp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                        ilo1,ilo2,ihi1,ihi2,dx,dy,dt,kc,k3d)
           
        end if
 
        ! Compute \tilde{F}^x at kc (k3d)
-       call cmpflx(qxm,qxp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                   fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                   ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call cmpflx(qxm,qxp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                   fx,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                   ugdnvx,pgdnvx,gegdnvx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                    1,ilo1,ihi1+1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
        ! Compute \tilde{F}^y at kc (k3d)
-       call cmpflx(qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                   fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                   ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call cmpflx(qym,qyp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                   fy,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                   ugdnvy,pgdnvy,gegdnvy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                    2,ilo1-1,ihi1+1,ilo2,ihi2+1,kc,kc,k3d,domlo,domhi)
        
        ! Compute U'^y_x at kc (k3d)
-       call transy1(qxm,qmxy,qxp,qpxy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                    fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                    ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call transy1(qxm,qmxy,qxp,qpxy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                    fy,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                    ugdnvy,pgdnvy,gegdnvy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                     gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                     cdtdy,ilo1-1,ihi1+1,ilo2,ihi2,kc,k3d)
 
        ! Compute U'^x_y at kc (k3d)
-       call transx1(qym,qmyx,qyp,qpyx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                    fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                    ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call transx1(qym,qmyx,qyp,qpyx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                    fx,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                    ugdnvx,pgdnvx,gegdnvx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                     gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                     cdtdx,ilo1,ihi1,ilo2-1,ihi2+1,kc,k3d)
 
        ! Compute F^{x|y} at kc (k3d)
-       call cmpflx(qmxy,qpxy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                   fxy,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                   ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call cmpflx(qmxy,qpxy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                   fxy,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                   ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                    1,ilo1,ihi1+1,ilo2,ihi2,kc,kc,k3d,domlo,domhi)
 
        ! Compute F^{y|x} at kc (k3d)
-       call cmpflx(qmyx,qpyx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                   fyx,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                   ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+       call cmpflx(qmyx,qpyx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                   fyx,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                   ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                    gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                    shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                    2,ilo1,ihi1,ilo2,ihi2+1,kc,kc,k3d,domlo,domhi)
@@ -465,60 +491,60 @@ contains
           if (ppm_type .gt. 0) then
              call tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
-                             qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                             qzm,qzp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                              gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              ilo1,ilo2,ihi1,ihi2,dt,km,kc,k3d)
           else
              call tracez(q,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         dqz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         dqz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         qzm,qzp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          ilo1,ilo2,ihi1,ihi2,dz,dt,km,kc,k3d)
           end if
 
           ! Compute \tilde{F}^z at kc (k3d)
-          call cmpflx(qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                      fz,ilo1-1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                      ugdnvz,pgdnvz,gegdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call cmpflx(qzm,qzp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                      fz,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                      ugdnvz,pgdnvz,gegdnvz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                       3,ilo1-1,ihi1+1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
           ! Compute U'^y_z at kc (k3d)
-          call transy2(qzm,qmzy,qzp,qpzy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       fy,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                       ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call transy2(qzm,qmzy,qzp,qpzy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                       fy,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                       ugdnvy,pgdnvy,gegdnvy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        cdtdy,ilo1-1,ihi1+1,ilo2,ihi2,kc,km,k3d)
 
           ! Compute U'^x_z at kc (k3d)
-          call transx2(qzm,qmzx,qzp,qpzx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       fx,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                       ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call transx2(qzm,qmzx,qzp,qpzx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                       fx,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                       ugdnvx,pgdnvx,gegdnvx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        cdtdx,ilo1,ihi1,ilo2-1,ihi2+1,kc,km,k3d)
 
           ! Compute F^{z|x} at kc (k3d)
-          call cmpflx(qmzx,qpzx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                      fzx,ilo1,ilo2-1,1,ihi1,ihi2+1,2, &
-                      ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call cmpflx(qmzx,qpzx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                      fzx,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                      ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                       3,ilo1,ihi1,ilo2-1,ihi2+1,kc,kc,k3d,domlo,domhi)
 
           ! Compute F^{z|y} at kc (k3d)
-          call cmpflx(qmzy,qpzy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                      fzy,ilo1-1,ilo2,1,ihi1+1,ihi2,2, &
-                      ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call cmpflx(qmzy,qpzy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                      fzy,iloalg,ilo2,1,ihialg,ihi2,2, &
+                      ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &                       
                       3,ilo1-1,ihi1+1,ilo2,ihi2,kc,kc,k3d,domlo,domhi)
           
           ! Compute U''_z at kc (k3d)
-          call transxy(qzm,qzl,qzp,qzr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       fxy,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                       fyx,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                       ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                       ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call transxy(qzm,qzl,qzp,qzr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                       fxy,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                       fyx,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                       ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                       ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                        grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -526,12 +552,13 @@ contains
                        hdt,hdtdx,hdtdy,ilo1,ihi1,ilo2,ihi2,kc,km,k3d)
 
           ! Compute F^z at kc (k3d) -- note that flux3 is indexed by k3d, not kc
-          call cmpflx(qzl,qzr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                      flux3,fd3_l1,fd3_l2,fd3_l3,fd3_h1,fd3_h2,fd3_h3, &
-                      ugdnvzf,pgdnvzf,gegdnvzf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+          call cmpflx(qzl,qzr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                      flxtmp,iloalg,ilo2,1,ihialg,ihi2+1,1, &
+                      ugdnvzf,pgdnvzf,gegdnvzf,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                       gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
-                      3,ilo1,ihi1,ilo2,ihi2,kc,k3d,k3d,domlo,domhi)
+                      3,ilo1,ihi1,ilo2,ihi2,kc,1,k3d,domlo,domhi)
+          flux3(ilo1:ihi1,ilo2:ihi2,k3d,:) = flxtmp(ilo1:ihi1,ilo2:ihi2,1,:)
 
           do j=ilo2-1,ihi2+1
              do i=ilo1-1,ihi1+1
@@ -551,36 +578,36 @@ contains
           
           if (k3d.gt.ilo3) then
 
-             ! Compute U'^z_x and U'^z_y at km (k3d-1) -- note flux3 has physical index
+             ! Compute U'^z_x and U'^z_y at km (k3d-1)
              call transz(qxm,qmxz,qxp,qpxz, &
-                         qym,qmyz,qyp,qpyz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         fz,ilo1-1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                         ugdnvz,pgdnvz,gegdnvz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+                         qym,qmyz,qyp,qpyz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         fz,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                         ugdnvz,pgdnvz,gegdnvz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          cdtdz,ilo1-1,ihi1+1,ilo2-1,ihi2+1,km,kc,k3d)
          
              ! Compute F^{x|z} at km (k3d-1)
-             call cmpflx(qmxz,qpxz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         fxz,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                         ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call cmpflx(qmxz,qpxz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         fxz,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                         ugdnvx,pgdnvx,gegdnvx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                          1,ilo1,ihi1+1,ilo2-1,ihi2+1,km,km,k3d-1,domlo,domhi)
 
              ! Compute F^{y|z} at km (k3d-1)
-             call cmpflx(qmyz,qpyz,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         fyz,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                         ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call cmpflx(qmyz,qpyz,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         fyz,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                         ugdnvy,pgdnvy,gegdnvy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
                          2,ilo1-1,ihi1+1,ilo2,ihi2+1,km,km,k3d-1,domlo,domhi)
 
              ! Compute U''_x at km (k3d-1)
-             call transyz(qxm,qxl,qxp,qxr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          fyz,ilo1-1,ilo2,1,ihi1+1,ihi2+1,2, &
-                          fzy,ilo1-1,ilo2,1,ihi1+1,ihi2,2, &
-                          ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call transyz(qxm,qxl,qxp,qxr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                          fyz,iloalg,ilo2,1,ihialg,ihi2+1,2, &
+                          fzy,iloalg,ilo2,1,ihialg,ihi2,2, &
+                          ugdnvy,pgdnvy,gegdnvy,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                          ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                           srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -588,11 +615,11 @@ contains
                           hdt,hdtdy,hdtdz,ilo1-1,ihi1+1,ilo2,ihi2,km,kc,k3d-1)
 
              ! Compute U''_y at km (k3d-1)
-             call transxz(qym,qyl,qyp,qyr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          fxz,ilo1,ilo2-1,1,ihi1+1,ihi2+1,2, &
-                          fzx,ilo1,ilo2-1,1,ihi1,ihi2+1,2, &
-                          ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                          ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call transxz(qym,qyl,qyp,qyr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                          fxz,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                          fzx,iloalg,ilo2-1,1,ihialg,ihi2+1,2, &
+                          ugdnvx,pgdnvx,gegdnvx,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                          ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                           srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
@@ -600,12 +627,13 @@ contains
                           hdt,hdtdx,hdtdz,ilo1,ihi1,ilo2-1,ihi2+1,km,kc,k3d-1)
 
              ! Compute F^x at km (k3d-1)
-             call cmpflx(qxl,qxr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         flux1,fd1_l1,fd1_l2,fd1_l3,fd1_h1,fd1_h2,fd1_h3, &
-                         ugdnvxf,pgdnvxf,gegdnvxf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call cmpflx(qxl,qxr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         flxtmp,iloalg,ilo2,1,ihialg,ihi2+1,1, &
+                         ugdnvxf,pgdnvxf,gegdnvxf,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
-                         1,ilo1,ihi1+1,ilo2,ihi2,km,k3d-1,k3d-1,domlo,domhi)
+                         1,ilo1,ihi1+1,ilo2,ihi2,km,1,k3d-1,domlo,domhi)
+             flux1(ilo1:ihi1+1,ilo2:ihi2,k3d-1,:) = flxtmp(ilo1:ihi1+1,ilo2:ihi2,1,:)
              
              do j=ilo2-1,ihi2+1
                 do i=ilo1-1,ihi1+2
@@ -614,12 +642,13 @@ contains
              end do
              
              ! Compute F^y at km (k3d-1)
-             call cmpflx(qyl,qyr,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                         flux2,fd2_l1,fd2_l2,fd2_l3,fd2_h1,fd2_h2,fd2_h3, &
-                         ugdnvyf,pgdnvyf,gegdnvyf,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
+             call cmpflx(qyl,qyr,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
+                         flxtmp,iloalg,ilo2,1,ihialg,ihi2+1,1, &
+                         ugdnvyf,pgdnvyf,gegdnvyf,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                          gamc,csml,c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          shk,ilo1-1,ilo2-1,ilo3-1,ihi1+1,ihi2+1,ihi3+1, &
-                         2,ilo1,ihi1,ilo2,ihi2+1,km,k3d-1,k3d-1,domlo,domhi)
+                         2,ilo1,ihi1,ilo2,ihi2+1,km,1,k3d-1,domlo,domhi)
+             flux2(ilo1:ihi1,ilo2:ihi2+1,k3d-1,:) = flxtmp(ilo1:ihi1,ilo2:ihi2+1,1,:)
 
              do j=ilo2-1,ihi2+2
                 do i=ilo1-1,ihi1+1

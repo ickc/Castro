@@ -27,6 +27,8 @@ f90EXE_sources += prob_params.f90
 f90EXE_sources += tagging_params.f90
 f90EXE_sources += interpolate.f90
 
+F90EXE_sources += align_array.F90
+
 ifeq ($(USE_REACT), TRUE)
 CEXE_sources += Castro_react.cpp
 endif
