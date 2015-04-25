@@ -86,16 +86,20 @@ contains
              
              compn = cdtdx*(fx(i+1,j,kc,n) - fx(i,j,kc,n))
              
-             rr = qyp(i,j,kc,QRHO)
-             rrnew = rr - cdtdx*(fx(i+1,j,kc,URHO) - fx(i,j,kc,URHO))
-             compu = rr*qyp(i,j,kc,nq) - compn
-             qypo(i,j,kc,nq) = compu/rrnew
-             
-             rr = qym(i,j+1,kc,QRHO)
-             rrnew = rr - cdtdx*(fx(i+1,j,kc,URHO) - fx(i,j,kc,URHO))
-             compu = rr*qym(i,j+1,kc,nq) - compn
-             qymo(i,j+1,kc,nq) = compu/rrnew
-             
+             if (j.ge.jlo+1) then
+                rr = qyp(i,j,kc,QRHO)
+                rrnew = rr - cdtdx*(fx(i+1,j,kc,URHO) - fx(i,j,kc,URHO))
+                compu = rr*qyp(i,j,kc,nq) - compn
+                qypo(i,j,kc,nq) = compu/rrnew
+             end if
+
+             if (j.le.jhi-1) then
+                rr = qym(i,j+1,kc,QRHO)
+                rrnew = rr - cdtdx*(fx(i+1,j,kc,URHO) - fx(i,j,kc,URHO))
+                compu = rr*qym(i,j+1,kc,nq) - compn
+                qymo(i,j+1,kc,nq) = compu/rrnew
+             end if
+
           enddo
        enddo
     enddo
@@ -722,18 +726,22 @@ contains
        nq = qpass_map(ipassive)
        do j = jlo, jhi
           do i = ilo, ihi
-             
+
              compn = cdtdy*(fy(i,j+1,kc,n) - fy(i,j,kc,n))
              
-             rr = qxp(i,j,kc,QRHO)
-             rrnew = rr - cdtdy*(fy(i,j+1,kc,URHO) - fy(i,j,kc,URHO))
-             compu = rr*qxp(i,j,kc,nq) - compn
-             qxpo(i,j,kc,nq) = compu/rrnew
+             if (i.ge.ilo+1) then
+                rr = qxp(i,j,kc,QRHO)
+                rrnew = rr - cdtdy*(fy(i,j+1,kc,URHO) - fy(i,j,kc,URHO))
+                compu = rr*qxp(i,j,kc,nq) - compn
+                qxpo(i,j,kc,nq) = compu/rrnew
+             end if
              
-             rr = qxm(i+1,j,kc,QRHO)
-             rrnew = rr - cdtdy*(fy(i,j+1,kc,URHO) - fy(i,j,kc,URHO))
-             compu = rr*qxm(i+1,j,kc,nq) - compn
-             qxmo(i+1,j,kc,nq) = compu/rrnew
+             if (i.le.ihi-1) then
+                rr = qxm(i+1,j,kc,QRHO)
+                rrnew = rr - cdtdy*(fy(i,j+1,kc,URHO) - fy(i,j,kc,URHO))
+                compu = rr*qxm(i+1,j,kc,nq) - compn
+                qxmo(i+1,j,kc,nq) = compu/rrnew
+             end if
              
           enddo
        enddo
@@ -1372,26 +1380,34 @@ contains
              
              compn = cdtdz*(fz(i,j,kc,n) - fz(i,j,km,n))
              
-             rr = qxp(i,j,km,QRHO)
-             rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
-             compu = rr*qxp(i,j,km,nq) - compn
-             qxpo(i,j,km,nq) = compu/rrnew
-             
-             rr = qyp(i,j,km,QRHO)
-             rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
-             compu = rr*qyp(i,j,km,nq) - compn
-             qypo(i,j,km,nq) = compu/rrnew
-             
-             rr = qxm(i+1,j,km,QRHO)
-             rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
-             compu = rr*qxm(i+1,j,km,nq) - compn
-             qxmo(i+1,j,km,nq) = compu/rrnew
-             
-             rr = qym(i,j+1,km,QRHO)
-             rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
-             compu = rr*qym(i,j+1,km,nq) - compn
-             qymo(i,j+1,km,nq) = compu/rrnew
-             
+             if (i.ge.ilo+1) then
+                rr = qxp(i,j,km,QRHO)
+                rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
+                compu = rr*qxp(i,j,km,nq) - compn
+                qxpo(i,j,km,nq) = compu/rrnew
+             end if
+
+             if (j.ge.jlo+1) then
+                rr = qyp(i,j,km,QRHO)
+                rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
+                compu = rr*qyp(i,j,km,nq) - compn
+                qypo(i,j,km,nq) = compu/rrnew
+             end if
+
+             if (i.le.ihi-1) then
+                rr = qxm(i+1,j,km,QRHO)
+                rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
+                compu = rr*qxm(i+1,j,km,nq) - compn
+                qxmo(i+1,j,km,nq) = compu/rrnew
+             end if
+
+             if (j.le.jhi-1) then
+                rr = qym(i,j+1,km,QRHO)
+                rrnew = rr - cdtdz*(fz(i,j,kc,URHO) - fz(i,j,km,URHO))
+                compu = rr*qym(i,j+1,km,nq) - compn
+                qymo(i,j+1,km,nq) = compu/rrnew
+             end if
+
           enddo
        enddo
     enddo
@@ -1718,7 +1734,7 @@ contains
                 ! and compute the p edge state from this and (rho e)
                 qxmo(i+1,j,km,QPRES) = qxmo(i+1,j,km,QREINT)*(qxmo(i+1,j,km,QGAME)-ONE)
                 qxmo(i+1,j,km,QPRES) = max(qxmo(i+1,j,km,QPRES), small_pres)
-                
+
              end if
 
           endif
@@ -2311,25 +2327,26 @@ contains
        nq = qpass_map(ipassive)
        do j = jlo, jhi
           do i = ilo, ihi
-             
-             rrr = qp(i,j,km,QRHO)
-             rrl = qm(i,j+1,km,QRHO)
-             
-             compr = rrr*qp(i,j,km,nq)
-             compl = rrl*qm(i,j+1,km,nq)
-             
-             rrnewr = rrr - cdtdx*(fxz(i+1,j,km,URHO) - fxz(i,j,km,URHO)) &
-                          - cdtdz*(fzx(i  ,j,kc,URHO) - fzx(i,j,km,URHO))
-             rrnewl = rrl - cdtdx*(fxz(i+1,j,km,URHO) - fxz(i,j,km,URHO)) &
-                          - cdtdz*(fzx(i  ,j,kc,URHO) - fzx(i,j,km,URHO))
 
-             compnr = compr - cdtdx*(fxz(i+1,j,km,n) - fxz(i,j,km,n)) &
-                            - cdtdz*(fzx(i  ,j,kc,n) - fzx(i,j,km,n))
-             compnl = compl - cdtdx*(fxz(i+1,j,km,n) - fxz(i,j,km,n)) &
-                            - cdtdz*(fzx(i  ,j,kc,n) - fzx(i,j,km,n))
+             if (j.ge.jlo+1) then
+                rrr = qp(i,j,km,QRHO)
+                compr = rrr*qp(i,j,km,nq)
+                rrnewr = rrr - cdtdx*(fxz(i+1,j,km,URHO) - fxz(i,j,km,URHO)) &
+                     - cdtdz*(fzx(i  ,j,kc,URHO) - fzx(i,j,km,URHO))
+                compnr = compr - cdtdx*(fxz(i+1,j,km,n) - fxz(i,j,km,n)) &
+                     - cdtdz*(fzx(i  ,j,kc,n) - fzx(i,j,km,n))
+                qpo(i,j  ,km,nq) = compnr/rrnewr + hdt*srcQ(i,j,k3d,nq)
+             end if
              
-             qpo(i,j  ,km,nq) = compnr/rrnewr + hdt*srcQ(i,j,k3d,nq)
-             qmo(i,j+1,km,nq) = compnl/rrnewl + hdt*srcQ(i,j,k3d,nq)
+             if (j.le.jhi-1) then
+                rrl = qm(i,j+1,km,QRHO)             
+                compl = rrl*qm(i,j+1,km,nq)
+                rrnewl = rrl - cdtdx*(fxz(i+1,j,km,URHO) - fxz(i,j,km,URHO)) &
+                     - cdtdz*(fzx(i  ,j,kc,URHO) - fzx(i,j,km,URHO))
+                compnl = compl - cdtdx*(fxz(i+1,j,km,n) - fxz(i,j,km,n)) &
+                     - cdtdz*(fzx(i  ,j,kc,n) - fzx(i,j,km,n))
+                qmo(i,j+1,km,nq) = compnl/rrnewl + hdt*srcQ(i,j,k3d,nq)
+             end if
 
           enddo
        enddo
@@ -2591,13 +2608,17 @@ contains
     if ((do_grav .eq. 1) .and. (ppm_trace_grav == 0 .or. ppm_type == 0)) then
        do j = jlo, jhi 
           do i = ilo, ihi 
-             qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*grav(i,j,k3d,1)
-             qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*grav(i,j,k3d,2)
-             qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*grav(i,j,k3d,3)
-             
-             qmo(i,j+1,km,QU    ) = qmo(i,j+1,km,QU    ) + hdt*grav(i,j,k3d,1)
-             qmo(i,j+1,km,QV    ) = qmo(i,j+1,km,QV    ) + hdt*grav(i,j,k3d,2)
-             qmo(i,j+1,km,QW    ) = qmo(i,j+1,km,QW    ) + hdt*grav(i,j,k3d,3)
+             if (j.ge.jlo+1) then
+                qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*grav(i,j,k3d,1)
+                qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*grav(i,j,k3d,2)
+                qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*grav(i,j,k3d,3)
+             end if
+
+             if (j.le.jhi-1) then
+                qmo(i,j+1,km,QU    ) = qmo(i,j+1,km,QU    ) + hdt*grav(i,j,k3d,1)
+                qmo(i,j+1,km,QV    ) = qmo(i,j+1,km,QV    ) + hdt*grav(i,j,k3d,2)
+                qmo(i,j+1,km,QW    ) = qmo(i,j+1,km,QW    ) + hdt*grav(i,j,k3d,3)
+             end if
           enddo
        enddo
     endif
@@ -2607,13 +2628,17 @@ contains
     if ((do_rotation .eq. 1) .and. (ppm_trace_rot == 0 .or. ppm_type == 0)) then
        do j = jlo, jhi 
           do i = ilo, ihi 
-             qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*rot(i,j,k3d,1)
-             qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*rot(i,j,k3d,2)
-             qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*rot(i,j,k3d,3)
-             
-             qmo(i,j+1,km,QU    ) = qmo(i,j+1,km,QU    ) + hdt*rot(i,j,k3d,1)
-             qmo(i,j+1,km,QV    ) = qmo(i,j+1,km,QV    ) + hdt*rot(i,j,k3d,2)
-             qmo(i,j+1,km,QW    ) = qmo(i,j+1,km,QW    ) + hdt*rot(i,j,k3d,3)
+             if (j.ge.jlo+1) then
+                qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*rot(i,j,k3d,1)
+                qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*rot(i,j,k3d,2)
+                qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*rot(i,j,k3d,3)
+             end if
+
+             if (j.le.jhi-1) then
+                qmo(i,j+1,km,QU    ) = qmo(i,j+1,km,QU    ) + hdt*rot(i,j,k3d,1)
+                qmo(i,j+1,km,QV    ) = qmo(i,j+1,km,QV    ) + hdt*rot(i,j,k3d,2)
+                qmo(i,j+1,km,QW    ) = qmo(i,j+1,km,QW    ) + hdt*rot(i,j,k3d,3)
+             end if
           enddo
        enddo
     endif
@@ -2705,26 +2730,27 @@ contains
        nq = qpass_map(ipassive)
        do j = jlo, jhi
           do i = ilo, ihi
-             
-             rrr = qp(i,j,km,QRHO)
-             rrl = qm(i+1,j,km,QRHO)
-             
-             compr = rrr*qp(i,j,km,nq)
-             compl = rrl*qm(i+1,j,km,nq)
-             
-             rrnewr = rrr - cdtdy*(fyz(i,j+1,km,URHO) - fyz(i,j,km,URHO)) &
-                          - cdtdz*(fzy(i,j  ,kc,URHO) - fzy(i,j,km,URHO))
-             rrnewl = rrl - cdtdy*(fyz(i,j+1,km,URHO) - fyz(i,j,km,URHO)) &
-                          - cdtdz*(fzy(i,j  ,kc,URHO) - fzy(i,j,km,URHO))
 
-             compnr = compr - cdtdy*(fyz(i,j+1,km,n) - fyz(i,j,km,n)) &
-                            - cdtdz*(fzy(i,j  ,kc,n) - fzy(i,j,km,n))
-             compnl = compl - cdtdy*(fyz(i,j+1,km,n) - fyz(i,j,km,n)) &
-                            - cdtdz*(fzy(i,j  ,kc,n) - fzy(i,j,km,n))
+             if (i.ge.ilo+1) then
+                rrr = qp(i,j,km,QRHO)
+                compr = rrr*qp(i,j,km,nq)
+                rrnewr = rrr - cdtdy*(fyz(i,j+1,km,URHO) - fyz(i,j,km,URHO)) &
+                             - cdtdz*(fzy(i,j  ,kc,URHO) - fzy(i,j,km,URHO))
+                compnr = compr - cdtdy*(fyz(i,j+1,km,n) - fyz(i,j,km,n)) &
+                               - cdtdz*(fzy(i,j  ,kc,n) - fzy(i,j,km,n))
+                qpo(i  ,j,km,nq) = compnr/rrnewr + hdt*srcQ(i,j,k3d,nq)
+             end if
 
-             qpo(i  ,j,km,nq) = compnr/rrnewr + hdt*srcQ(i,j,k3d,nq)
-             qmo(i+1,j,km,nq) = compnl/rrnewl + hdt*srcQ(i,j,k3d,nq)
-             
+             if (i.le.ihi-1) then
+                rrl = qm(i+1,j,km,QRHO)
+                compl = rrl*qm(i+1,j,km,nq)
+                rrnewl = rrl - cdtdy*(fyz(i,j+1,km,URHO) - fyz(i,j,km,URHO)) &
+                             - cdtdz*(fzy(i,j  ,kc,URHO) - fzy(i,j,km,URHO))
+                compnl = compl - cdtdy*(fyz(i,j+1,km,n) - fyz(i,j,km,n)) &
+                               - cdtdz*(fzy(i,j  ,kc,n) - fzy(i,j,km,n))
+                qmo(i+1,j,km,nq) = compnl/rrnewl + hdt*srcQ(i,j,k3d,nq)
+             end if
+
           enddo
        enddo
     enddo
@@ -2986,13 +3012,17 @@ contains
     if ((do_grav .eq. 1) .and. (ppm_trace_grav == 0 .or. ppm_type == 0)) then
        do j = jlo, jhi 
           do i = ilo, ihi 
-             qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*grav(i,j,k3d,1)
-             qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*grav(i,j,k3d,2)
-             qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*grav(i,j,k3d,3)
-             
-             qmo(i+1,j,km,QU     ) = qmo(i+1,j,km,QU     ) + hdt*grav(i,j,k3d,1)
-             qmo(i+1,j,km,QV     ) = qmo(i+1,j,km,QV     ) + hdt*grav(i,j,k3d,2)
-             qmo(i+1,j,km,QW     ) = qmo(i+1,j,km,QW     ) + hdt*grav(i,j,k3d,3)
+             if (i.ge.ilo+1) then
+                qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*grav(i,j,k3d,1)
+                qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*grav(i,j,k3d,2)
+                qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*grav(i,j,k3d,3)
+             end if
+
+             if (i.le.ihi-1) then
+                qmo(i+1,j,km,QU     ) = qmo(i+1,j,km,QU     ) + hdt*grav(i,j,k3d,1)
+                qmo(i+1,j,km,QV     ) = qmo(i+1,j,km,QV     ) + hdt*grav(i,j,k3d,2)
+                qmo(i+1,j,km,QW     ) = qmo(i+1,j,km,QW     ) + hdt*grav(i,j,k3d,3)
+             end if
           enddo
        enddo
     endif
@@ -3002,13 +3032,17 @@ contains
     if ((do_rotation .eq. 1) .and. (ppm_trace_rot == 0 .or. ppm_type == 0)) then
        do j = jlo, jhi 
           do i = ilo, ihi 
-             qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*rot(i,j,k3d,1)
-             qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*rot(i,j,k3d,2)
-             qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*rot(i,j,k3d,3)
+             if (i.ge.ilo+1) then
+                qpo(i,j,km,QU    ) = qpo(i,j,km,QU    ) + hdt*rot(i,j,k3d,1)
+                qpo(i,j,km,QV    ) = qpo(i,j,km,QV    ) + hdt*rot(i,j,k3d,2)
+                qpo(i,j,km,QW    ) = qpo(i,j,km,QW    ) + hdt*rot(i,j,k3d,3)
+             end if
              
-             qmo(i+1,j,km,QU     ) = qmo(i+1,j,km,QU     ) + hdt*rot(i,j,k3d,1)
-             qmo(i+1,j,km,QV     ) = qmo(i+1,j,km,QV     ) + hdt*rot(i,j,k3d,2)
-             qmo(i+1,j,km,QW     ) = qmo(i+1,j,km,QW     ) + hdt*rot(i,j,k3d,3)
+             if (i.le.ihi-1) then
+                qmo(i+1,j,km,QU     ) = qmo(i+1,j,km,QU     ) + hdt*rot(i,j,k3d,1)
+                qmo(i+1,j,km,QV     ) = qmo(i+1,j,km,QV     ) + hdt*rot(i,j,k3d,2)
+                qmo(i+1,j,km,QW     ) = qmo(i+1,j,km,QW     ) + hdt*rot(i,j,k3d,3)
+             end if
           enddo
        enddo
     endif
