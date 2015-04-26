@@ -935,6 +935,14 @@ contains
     integer :: pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3
     integer :: idir,ilo,ihi,jlo,jhi
     integer :: domlo(3),domhi(3)
+    integer :: kc,kflux,k3d
+    ! Note:  Here k3d is the k corresponding to the full 3d array --
+    !         it should be used for print statements or tests against domlo, domhi, etc
+    !         kc  is the k corresponding to the 2-wide slab of k-planes, so takes values
+    !             only of 1 or 2
+    !         kflux is used for indexing into the uflx array -- in the initial calls to
+    !             cmpflx when uflx = {fx,fy,fxy,fyx,fz,fxz,fzx,fyz,fzy}, kflux = kc,
+    !             but in later calls, when uflx = {flux1,flux2,flux3}  , kflux = k3d
 
     double precision :: ql(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
     double precision :: qr(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
@@ -947,16 +955,8 @@ contains
     double precision :: pgdnv(pg_l1:pg_h1,pg_l2:pg_h2,pg_l3:pg_h3)
     double precision :: gegdnv(pg_l1:pg_h1,pg_l2:pg_h2,pg_l3:pg_h3)
 
-    ! Note:  Here k3d is the k corresponding to the full 3d array --
-    !         it should be used for print statements or tests against domlo, domhi, etc
-    !         kc  is the k corresponding to the 2-wide slab of k-planes, so takes values
-    !             only of 1 or 2
-    !         kflux is used for indexing into the uflx array -- in the initial calls to
-    !             cmpflx when uflx = {fx,fy,fxy,fyx,fz,fxz,fzx,fyz,fzy}, kflux = kc,
-    !             but in later calls, when uflx = {flux1,flux2,flux3}  , kflux = k3d
-    integer :: i,j,kc,kflux,k3d, ipassive
+    integer :: i,j,ipassive
     integer :: n, nq
-    integer :: iadv, ispec, iaux
 
     double precision :: rgdnv,v1gdnv,v2gdnv,regdnv
     double precision :: rl, ul, v1l, v2l, pl, rel
@@ -972,8 +972,16 @@ contains
     logical :: zerov_lo, zerov_hi
     double precision :: zerov_fac
     integer :: iu, iv1, iv2, im1, im2, im3
+    integer :: ilo_align, rem
 
 !dir$ attributes align : alignbyte :: us1d, rgd1d
+
+    rem = modulo(ilo-qpd_l1, nalign_double)
+    if (rem .eq. 0) then
+       ilo_align = ilo
+    else
+       ilo_align = ilo + (nalign_double - rem)
+    end if
 
     if (idir .eq. 1) then
        iu = QU
@@ -1030,7 +1038,27 @@ contains
           end if
        end if
        
-       do i = ilo, ihi
+       do i = ilo, ilo_align-1
+include 'riemannus_loopbody.f90'
+       end do
+
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#endif
+       !DIR$ private(rgdnv,v1gdnv,v2gdnv,regdnv) &
+       !DIR$ private(rl,ul,v1l,v2l,pl,rel) &
+       !DIR$ private(rr,ur,v1r,v2r,pr,rer) &
+       !DIR$ private(wl,wr,rhoetot,scr) &
+       !DIR$ private(rstar,cstar,estar,pstar,ustar) &
+       !DIR$ private(ro,uo,po,reo,co,gamco,entho) &
+       !DIR$ private(sgnm,spin,spout,ushock,frac) &
+       !DIR$ private(wsmall,csmall) &
+       !DIR$ firstprivate(zerov_fac)
+       !DIR$ vector aligned
+       do i = ilo_align, ihi
 include 'riemannus_loopbody.f90'
        end do
 
