@@ -968,11 +968,58 @@ contains
     double precision :: wsmall, csmall
     double precision :: rho_K_contrib
     double precision :: qavg
+    double precision :: us1d(qpd_l1:qpd_h1), rgd1d(qpd_l1:qpd_h1)
    
     do j = jlo, jhi
        do i = ilo, ihi
 include 'riemannus_loopbody.f90'
        end do
+
+       ! Treat K as a passively advected quantity but allow it to affect fluxes of (rho E) and momenta.
+       if (UESGS .gt. -1) then
+          do i = ilo, ihi
+             n  = UESGS
+             nq = QESGS
+             if (us1d(i) .gt. ZERO) then
+                qavg = ql(i,j,kc,nq)
+             else if (us1d(i) .lt. ZERO) then
+                qavg = qr(i,j,kc,nq)
+             else
+                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
+             endif
+
+             uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
+
+             rho_K_contrib =  TWO3RD * rgd1d(i) * qavg
+
+             if(idir.eq.1) then
+                uflx(i,j,kflux,UMX) = uflx(i,j,kflux,UMX) + rho_K_contrib
+             elseif(idir.eq.2) then
+                uflx(i,j,kflux,UMY) = uflx(i,j,kflux,UMY) + rho_K_contrib
+             elseif(idir.eq.3) then
+                uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,UMZ) + rho_K_contrib
+             endif
+
+             uflx(i,j,kflux,UEDEN) = uflx(i,j,kflux,UEDEN) + ugdnv(i,j,kc) * rho_K_contrib
+          end do
+       end if
+
+       do ipassive = 1, npassive
+          n  = upass_map(ipassive)
+          nq = qpass_map(ipassive)
+
+          do i = ilo, ihi
+             if (us1d(i) .gt. ZERO) then
+                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*ql(i,j,kc,nq)
+             else if (us1d(i) .lt. ZERO) then
+                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qr(i,j,kc,nq)
+             else
+                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
+                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
+             endif
+          enddo
+       end do
+
     enddo
 
   end subroutine riemannus

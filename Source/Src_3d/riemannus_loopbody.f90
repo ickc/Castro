@@ -181,45 +181,11 @@
           uflx(i,j,kflux,UEDEN) = ugdnv(i,j,kc)*(rhoetot + pgdnv(i,j,kc))
           uflx(i,j,kflux,UEINT) = ugdnv(i,j,kc)*regdnv
 
-#ifdef SGS
-          ! Treat K as a passively advected quantity but allow it to affect fluxes of (rho E) and momenta.
           if (UESGS .gt. -1) then
-        xxx     n  = UESGS
-             nq = QESGS
-             if (ustar .gt. ZERO) then
-                qavg = ql(i,j,kc,nq)
-             else if (ustar .lt. ZERO) then
-                qavg = qr(i,j,kc,nq)
-             else
-                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
-             endif
-
-             uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
-
-             rho_K_contrib =  TWO3RD * rgdnv * qavg
-
-             if(idir.eq.1) then
-                uflx(i,j,kflux,UMX) = uflx(i,j,kflux,UMX) + rho_K_contrib
-             elseif(idir.eq.2) then
-                uflx(i,j,kflux,UMY) = uflx(i,j,kflux,UMY) + rho_K_contrib
-             elseif(idir.eq.3) then
-                uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,UMZ) + rho_K_contrib
-             endif
-
-             uflx(i,j,kflux,UEDEN) = uflx(i,j,kflux,UEDEN) + ugdnv(i,j,kc) * rho_K_contrib
+             rgd1d(i) = rgdnv
           end if
-#endif
 
-          do ipassive = 1, npassive
-             n  = upass_map(ipassive)
-             nq = qpass_map(ipassive)
+          if (UESGS .gt. -1 .or. npassive .ge. 1) then
+             us1d(i) = ustar
+          end if
 
-             if (ustar .gt. ZERO) then
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*ql(i,j,kc,nq)
-             else if (ustar .lt. ZERO) then
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qr(i,j,kc,nq)
-             else
-                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
-             endif
-          enddo
