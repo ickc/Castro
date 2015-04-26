@@ -2,19 +2,9 @@
           rl = max(ql(i,j,kc,QRHO),small_dens)
 
           ! pick left velocities based on direction
-          if(idir.eq.1) then
-             ul  = ql(i,j,kc,QU)
-             v1l = ql(i,j,kc,QV)
-             v2l = ql(i,j,kc,QW)
-          elseif(idir.eq.2) then
-             ul  = ql(i,j,kc,QV)
-             v1l = ql(i,j,kc,QU)
-             v2l = ql(i,j,kc,QW)
-          else
-             ul  = ql(i,j,kc,QW)
-             v1l = ql(i,j,kc,QU)
-             v2l = ql(i,j,kc,QV)
-          endif
+          ul  = ql(i,j,kc,iu)
+          v1l = ql(i,j,kc,iv1)
+          v2l = ql(i,j,kc,iv2)
 
           pl  = max(ql(i,j,kc,QPRES ),small_pres)
           rel =     ql(i,j,kc,QREINT)
@@ -22,19 +12,9 @@
           rr = max(qr(i,j,kc,QRHO),small_dens)
 
           ! pick right velocities based on direction
-          if(idir.eq.1) then
-             ur  = qr(i,j,kc,QU)
-             v1r = qr(i,j,kc,QV)
-             v2r = qr(i,j,kc,QW)
-          elseif(idir.eq.2) then
-             ur  = qr(i,j,kc,QV)
-             v1r = qr(i,j,kc,QU)
-             v2r = qr(i,j,kc,QW)
-          else
-             ur  = qr(i,j,kc,QW)
-             v1r = qr(i,j,kc,QU)
-             v2r = qr(i,j,kc,QV)
-          endif
+          ur  = qr(i,j,kc,iu)
+          v1r = qr(i,j,kc,iv1)
+          v2r = qr(i,j,kc,iv2)
 
           pr  = max(qr(i,j,kc,QPRES),small_pres)
           rer =     qr(i,j,kc,QREINT)
@@ -54,18 +34,24 @@
              po = pl
              reo = rel
              gamco = gamcl(i,j)
+             v1gdnv = v1l
+             v2gdnv = v2l
           else if (ustar .lt. ZERO) then
              ro = rr
              uo = ur
              po = pr
              reo = rer
              gamco = gamcr(i,j)
+             v1gdnv = v1r
+             v2gdnv = v2r
           else
              ro = HALF*(rl+rr)
              uo = HALF*(ul+ur)
              po = HALF*(pl+pr)
              reo = HALF*(rel+rer)
              gamco = HALF*(gamcl(i,j)+gamcr(i,j))
+             v1gdnv = HALF*(v1l+v1r)
+             v2gdnv = HALF*(v2l+v2r)
           endif
           ro = max(small_dens,ro)
 
@@ -94,16 +80,6 @@
           frac = (ONE + (spout + spin)/scr)*HALF
           frac = max(ZERO,min(ONE,frac))
 
-          if (ustar .gt. ZERO) then
-             v1gdnv = v1l
-             v2gdnv = v2l
-          else if (ustar .lt. ZERO) then
-             v1gdnv = v1r
-             v2gdnv = v2r
-          else
-             v1gdnv = HALF*(v1l+v1r)
-             v2gdnv = HALF*(v2l+v2r)
-          endif
           rgdnv = frac*rstar + (ONE - frac)*ro
 
           ugdnv(i,j,kc) = frac*ustar + (ONE - frac)*uo
@@ -129,63 +105,28 @@
 
           ! Enforce that fluxes through a symmetry plane or wall are hard zero.
           if (idir .eq. 1) then
-             if (i.eq.domlo(1) .and. &
-                  (physbc_lo(1) .eq. Symmetry .or.  physbc_lo(1) .eq. SlipWall .or. &
-                  physbc_lo(1) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (i.eq.domhi(1)+1 .and. &
-                  (physbc_hi(1) .eq. Symmetry .or.  physbc_hi(1) .eq. SlipWall .or. &
-                  physbc_hi(1) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
+             if ( (i.eq.domlo(1)   .and. zerov_lo) .or. &
+                  (i.eq.domhi(1)+1 .and. zerov_hi) ) then
+                zerov_fac = ZERO
+             else
+                zerov_fac = ONE
+             end if
           end if
-          if (idir .eq. 2) then
-             if (j.eq.domlo(2) .and. &
-                  (physbc_lo(2) .eq. Symmetry .or.  physbc_lo(2) .eq. SlipWall .or. &
-                  physbc_lo(2) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (j.eq.domhi(2)+1 .and. &
-                  (physbc_hi(2) .eq. Symmetry .or.  physbc_hi(2) .eq. SlipWall .or. &
-                  physbc_hi(2) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-          end if
-          if (idir .eq. 3) then
-             if (k3d.eq.domlo(3) .and. &
-                  (physbc_lo(3) .eq. Symmetry .or.  physbc_lo(3) .eq. SlipWall .or. &
-                  physbc_lo(3) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (k3d.eq.domhi(3)+1 .and. &
-                  (physbc_hi(3) .eq. Symmetry .or.  physbc_hi(3) .eq. SlipWall .or. &
-                  physbc_hi(3) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-          end if
+
+          ugdnv(i,j,kc) = ugdnv(i,j,kc) * zerov_fac
 
           ! Compute fluxes, order as conserved state (not q)
           uflx(i,j,kflux,URHO) = rgdnv*ugdnv(i,j,kc)
 
-          if(idir.eq.1) then
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*v2gdnv
-          elseif(idir.eq.2) then
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*v2gdnv
-          else
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*v2gdnv
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-          endif
+          uflx(i,j,kflux,im1) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
+          uflx(i,j,kflux,im2) = uflx(i,j,kflux,URHO)*v1gdnv
+          uflx(i,j,kflux,im3) = uflx(i,j,kflux,URHO)*v2gdnv
 
           rhoetot = regdnv + HALF*rgdnv*(ugdnv(i,j,kc)**2 + v1gdnv**2 + v2gdnv**2)
 
           uflx(i,j,kflux,UEDEN) = ugdnv(i,j,kc)*(rhoetot + pgdnv(i,j,kc))
           uflx(i,j,kflux,UEINT) = ugdnv(i,j,kc)*regdnv
 
-          if (UESGS .gt. -1) then
-             rgd1d(i) = rgdnv
-          end if
-
-          if (UESGS .gt. -1 .or. npassive .ge. 1) then
-             us1d(i) = ustar
-          end if
+          rgd1d(i) = rgdnv
+          us1d(i) = ustar
 

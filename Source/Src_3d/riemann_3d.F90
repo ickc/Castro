@@ -969,8 +969,67 @@ contains
     double precision :: rho_K_contrib
     double precision :: qavg
     double precision :: us1d(qpd_l1:qpd_h1), rgd1d(qpd_l1:qpd_h1)
-   
+    logical :: zerov_lo, zerov_hi
+    double precision :: zerov_fac
+    integer :: iu, iv1, iv2, im1, im2, im3
+
+!dir$ attributes align : alignbyte :: us1d, rgd1d
+
+    if (idir .eq. 1) then
+       iu = QU
+       iv1 = QV
+       iv2 = QW
+       im1 = UMX
+       im2 = UMY
+       im3 = UMZ
+       zerov_lo = (physbc_lo(1) .eq. Symmetry .or.  physbc_lo(1) .eq. SlipWall .or. &
+            physbc_lo(1) .eq. NoSlipWall)
+       zerov_hi = (physbc_hi(1) .eq. Symmetry .or.  physbc_hi(1) .eq. SlipWall .or. &
+            physbc_hi(1) .eq. NoSlipWall)
+    else if (idir .eq. 2) then
+       iu = QV
+       iv1 = QU
+       iv2 = QW
+       im1 = UMY
+       im2 = UMX
+       im3 = UMZ
+       zerov_lo = (physbc_lo(2) .eq. Symmetry .or.  physbc_lo(2) .eq. SlipWall .or. &
+            physbc_lo(2) .eq. NoSlipWall)
+       zerov_hi = (physbc_hi(2) .eq. Symmetry .or.  physbc_hi(2) .eq. SlipWall .or. &
+            physbc_hi(2) .eq. NoSlipWall)
+    else
+       iu = QW
+       iv1 = QU
+       iv2 = QV
+       im1 = UMZ
+       im2 = UMX
+       im3 = UMY
+       zerov_lo = (physbc_lo(3) .eq. Symmetry .or.  physbc_lo(3) .eq. SlipWall .or. &
+            physbc_lo(3) .eq. NoSlipWall)
+       zerov_hi = (physbc_hi(3) .eq. Symmetry .or.  physbc_hi(3) .eq. SlipWall .or. &
+            physbc_hi(3) .eq. NoSlipWall)
+    end if
+    
+    zerov_fac = ONE
+    
+    if (idir .eq. 3) then
+       if ( (k3d.eq.domlo(idir)   .and. zerov_lo) .or. &
+            (k3d.eq.domhi(idir)+1 .and. zerov_hi) ) then
+          zerov_fac = ZERO
+       end if
+    end if
+    
     do j = jlo, jhi
+
+       if (idir .eq. 2) then
+          if ( (j.eq.domlo(idir)   .and. zerov_lo) .or. &
+               (j.eq.domhi(idir)+1 .and. zerov_hi) ) then
+             zerov_fac = ZERO
+          else
+             zerov_fac = ONE
+          end if
+       end if
+       
        do i = ilo, ihi
 include 'riemannus_loopbody.f90'
        end do
