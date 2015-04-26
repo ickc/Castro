@@ -104,16 +104,7 @@
           pgdnv(i,j,kc) = max(pgdnv(i,j,kc),small_pres)
 
           ! Enforce that fluxes through a symmetry plane or wall are hard zero.
-          if (idir .eq. 1) then
-             if ( (i.eq.domlo(1)   .and. zerov_lo) .or. &
-                  (i.eq.domhi(1)+1 .and. zerov_hi) ) then
-                zerov_fac = ZERO
-             else
-                zerov_fac = ONE
-             end if
-          end if
-
-          ugdnv(i,j,kc) = ugdnv(i,j,kc) * zerov_fac
+          ugdnv(i,j,kc) = ugdnv(i,j,kc) * zerov_yzfac * zerov_xfac(i)
 
           ! Compute fluxes, order as conserved state (not q)
           uflx(i,j,kflux,URHO) = rgdnv*ugdnv(i,j,kc)

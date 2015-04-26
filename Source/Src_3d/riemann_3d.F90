@@ -972,12 +972,12 @@ contains
     double precision :: qavg
     double precision :: us1d(qpd_l1:qpd_h1), rgd1d(qpd_l1:qpd_h1)
     logical :: zerov_lo, zerov_hi
-    double precision :: zerov_fac
+    double precision :: zerov_yzfac, zerov_xfac(qpd_l1:qpd_h1)
     integer :: iu, iv1, iv2, im1, im2, im3
     integer :: ilo_align, rem
 
 #if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
-!dir$ attributes align : alignbyte :: us1d, rgd1d
+!dir$ attributes align : alignbyte :: us1d, rgd1d, zerov_xfac
 #endif
 
     rem = modulo(ilo-qpd_l1, nalign_double)
@@ -1022,12 +1022,22 @@ contains
             physbc_hi(3) .eq. NoSlipWall)
     end if
     
-    zerov_fac = ONE
+    zerov_yzfac = ONE
     
     if (idir .eq. 3) then
        if ( (k3d.eq.domlo(idir)   .and. zerov_lo) .or. &
             (k3d.eq.domhi(idir)+1 .and. zerov_hi) ) then
-          zerov_fac = ZERO
+          zerov_yzfac = ZERO
+       end if
+    end if
+
+    zerov_xfac = ONE
+    if (idir .eq. 1) then
+       if (domlo(1) .ge. ilo) then
+          zerov_xfac(domlo(1)) = ZERO
+       end if
+       if (domhi(1)+1 .le. ihi) then
+          zerov_xfac(domhi(1)+1) = ZERO
        end if
     end if
     
@@ -1036,9 +1046,9 @@ contains
        if (idir .eq. 2) then
           if ( (j.eq.domlo(idir)   .and. zerov_lo) .or. &
                (j.eq.domhi(idir)+1 .and. zerov_hi) ) then
-             zerov_fac = ZERO
+             zerov_yzfac = ZERO
           else
-             zerov_fac = ONE
+             zerov_yzfac = ONE
           end if
        end if
        
@@ -1061,8 +1071,7 @@ include 'riemannus_loopbody.f90'
        !DIR$ private(rstar,cstar,estar,pstar,ustar) &
        !DIR$ private(ro,uo,po,reo,co,gamco,entho) &
        !DIR$ private(sgnm,spin,spout,ushock,frac) &
-       !DIR$ private(wsmall,csmall) &
-       !DIR$ firstprivate(zerov_fac)
+       !DIR$ private(wsmall,csmall)
 #if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
        !DIR$ vector aligned
 #endif
