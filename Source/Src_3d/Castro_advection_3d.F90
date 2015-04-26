@@ -151,12 +151,14 @@ contains
 
     integer :: iloalg, ihialg, nx, rem
 
+#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
 !dir$ attributes align : alignbyte :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
 !dir$ attributes align : alignbyte :: qmyz,qpyz,qmzx,qpzx,qmzy,qpzy,qxl,qxr,qyl,qyr,qzl,qzr,fx,fy,fz
 !dir$ attributes align : alignbyte :: fxy,fxz,fyx,fyz,fzx,fzy,flxtmp,pgdnvx,ugdnvx,gegdnvx,pgdnvxf,ugdnvxf,gegdnvxf
 !dir$ attributes align : alignbyte :: pgdnvtmpx,ugdnvtmpx,gegdnvtmpx,pgdnvy,ugdnvy,gegdnvy,pgdnvyf,ugdnvyf,gegdnvyf
 !dir$ attributes align : alignbyte :: pgdnvtmpy,ugdnvtmpy,gegdnvtmpy,pgdnvz,ugdnvz,gegdnvz,pgdnvzf,ugdnvzf,gegdnvzf
 !dir$ attributes align : alignbyte :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
+#endif
 
     ! before padding
     iloalg = ilo1-1

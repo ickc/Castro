@@ -69,7 +69,9 @@ contains
     double precision :: cl, cr
     type (eos_t) :: eos_state
 
+#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
 !dir$ attributes align : alignbyte :: smallc,cavg,gamcm,gamcp
+#endif
 
     allocate ( smallc(qpd_l1:qpd_h1,jlo:jhi) )
     allocate (   cavg(qpd_l1:qpd_h1,jlo:jhi) )
@@ -974,7 +976,9 @@ contains
     integer :: iu, iv1, iv2, im1, im2, im3
     integer :: ilo_align, rem
 
+#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
 !dir$ attributes align : alignbyte :: us1d, rgd1d
+#endif
 
     rem = modulo(ilo-qpd_l1, nalign_double)
     if (rem .eq. 0) then
@@ -1043,10 +1047,12 @@ include 'riemannus_loopbody.f90'
        end do
 
        !DIR$ SIMD &
-#ifdef BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_64_BYTE
+#ifdef BL_ALIGN_64_BYTE
        !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
 #endif
        !DIR$ private(rgdnv,v1gdnv,v2gdnv,regdnv) &
        !DIR$ private(rl,ul,v1l,v2l,pl,rel) &
@@ -1057,7 +1063,9 @@ include 'riemannus_loopbody.f90'
        !DIR$ private(sgnm,spin,spout,ushock,frac) &
        !DIR$ private(wsmall,csmall) &
        !DIR$ firstprivate(zerov_fac)
+#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
        !DIR$ vector aligned
+#endif
        do i = ilo_align, ihi
 include 'riemannus_loopbody.f90'
        end do
