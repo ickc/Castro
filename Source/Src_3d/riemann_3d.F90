@@ -1,5 +1,6 @@
 module riemann_module
 
+  use align_array_module
   use bl_constants_module
 
   implicit none
@@ -68,10 +69,12 @@ contains
     double precision :: cl, cr
     type (eos_t) :: eos_state
 
-    allocate ( smallc(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (   cavg(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (  gamcm(ilo-1:ihi+1,jlo-1:jhi+1) )
-    allocate (  gamcp(ilo-1:ihi+1,jlo-1:jhi+1) )
+!dir$ attributes align : alignbyte :: smallc,cavg,gamcm,gamcp
+
+    allocate ( smallc(qpd_l1:qpd_h1,jlo:jhi) )
+    allocate (   cavg(qpd_l1:qpd_h1,jlo:jhi) )
+    allocate (  gamcm(qpd_l1:qpd_h1,jlo:jhi) )
+    allocate (  gamcp(qpd_l1:qpd_h1,jlo:jhi) )
 
     if(idir.eq.1) then
        do j = jlo, jhi
@@ -165,14 +168,14 @@ contains
     ! Solve Riemann problem
     if (use_colglaz == 1) then
        call riemanncg(qm,qp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
-                      gamcm,gamcp,cavg,smallc,ilo-1,jlo-1,ihi+1,jhi+1, &
+                      gamcm,gamcp,cavg,smallc,qpd_l1,jlo,qpd_h1,jhi, &
                       flx,flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3, &
                       ugdnv,pgdnv,gegdnv,pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3, &
                       idir,ilo,ihi,jlo,jhi,kc,kflux,k3d,domlo,domhi)
 
     else
        call riemannus(qm,qp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
-                      gamcm,gamcp,cavg,smallc,ilo-1,jlo-1,ihi+1,jhi+1, &
+                      gamcm,gamcp,cavg,smallc,qpd_l1,jlo,qpd_h1,jhi, &
                       flx,flx_l1,flx_l2,flx_l3,flx_h1,flx_h2,flx_h3, &
                       ugdnv,pgdnv,gegdnv,pg_l1,pg_l2,pg_l3,pg_h1,pg_h2,pg_h3, &
                       idir,ilo,ihi,jlo,jhi,kc,kflux,k3d,domlo,domhi)
@@ -806,6 +809,7 @@ contains
           uflx(i,j,kflux,UEINT) = ugdnv(i,j,kc)*pgdnv(i,j,kc)/(gamgdnv - ONE)
 
 
+#ifdef SGS
           ! Treat K as a passively advected quantity but allow it to
           ! affect fluxes of (rho E) and momenta.
           if (UESGS .gt. -1) then
@@ -833,6 +837,7 @@ contains
 
              uflx(i,j,kflux,UEDEN) = uflx(i,j,kflux,UEDEN) + ugdnv(i,j,kc) * rho_K_contrib
           end if
+#endif
 
           ! advected quantities -- only the contact matters
           do ipassive = 1, npassive
@@ -953,243 +958,21 @@ contains
     integer :: n, nq
     integer :: iadv, ispec, iaux
 
-    double precision :: rgdnv,v1gdnv,v2gdnv,regdnv,ustar
+    double precision :: rgdnv,v1gdnv,v2gdnv,regdnv
     double precision :: rl, ul, v1l, v2l, pl, rel
     double precision :: rr, ur, v1r, v2r, pr, rer
     double precision :: wl, wr, rhoetot, scr
-    double precision :: rstar, cstar, estar, pstar
+    double precision :: rstar, cstar, estar, pstar, ustar
     double precision :: ro, uo, po, reo, co, gamco, entho
     double precision :: sgnm, spin, spout, ushock, frac
-    double precision :: wsmall, csmall,qavg
+    double precision :: wsmall, csmall
     double precision :: rho_K_contrib
-
+    double precision :: qavg
+   
     do j = jlo, jhi
        do i = ilo, ihi
-
-          rl = max(ql(i,j,kc,QRHO),small_dens)
-
-          ! pick left velocities based on direction
-          if(idir.eq.1) then
-             ul  = ql(i,j,kc,QU)
-             v1l = ql(i,j,kc,QV)
-             v2l = ql(i,j,kc,QW)
-          elseif(idir.eq.2) then
-             ul  = ql(i,j,kc,QV)
-             v1l = ql(i,j,kc,QU)
-             v2l = ql(i,j,kc,QW)
-          else
-             ul  = ql(i,j,kc,QW)
-             v1l = ql(i,j,kc,QU)
-             v2l = ql(i,j,kc,QV)
-          endif
-
-          pl  = max(ql(i,j,kc,QPRES ),small_pres)
-          rel =     ql(i,j,kc,QREINT)
-
-          rr = max(qr(i,j,kc,QRHO),small_dens)
-
-          ! pick right velocities based on direction
-          if(idir.eq.1) then
-             ur  = qr(i,j,kc,QU)
-             v1r = qr(i,j,kc,QV)
-             v2r = qr(i,j,kc,QW)
-          elseif(idir.eq.2) then
-             ur  = qr(i,j,kc,QV)
-             v1r = qr(i,j,kc,QU)
-             v2r = qr(i,j,kc,QW)
-          else
-             ur  = qr(i,j,kc,QW)
-             v1r = qr(i,j,kc,QU)
-             v2r = qr(i,j,kc,QV)
-          endif
-
-          pr  = max(qr(i,j,kc,QPRES),small_pres)
-          rer =     qr(i,j,kc,QREINT)
-
-          csmall = smallc(i,j)
-          wsmall = small_dens*csmall
-          wl = max(wsmall,sqrt(abs(gamcl(i,j)*pl*rl)))
-          wr = max(wsmall,sqrt(abs(gamcr(i,j)*pr*rr)))
-
-          pstar = ((wr*pl + wl*pr) + wl*wr*(ul - ur))/(wl + wr)
-          ustar = ((wl*ul + wr*ur) + (pl - pr))/(wl + wr)
-          pstar = max(pstar,small_pres)
-
-          if (ustar .gt. ZERO) then
-             ro = rl
-             uo = ul
-             po = pl
-             reo = rel
-             gamco = gamcl(i,j)
-          else if (ustar .lt. ZERO) then
-             ro = rr
-             uo = ur
-             po = pr
-             reo = rer
-             gamco = gamcr(i,j)
-          else
-             ro = HALF*(rl+rr)
-             uo = HALF*(ul+ur)
-             po = HALF*(pl+pr)
-             reo = HALF*(rel+rer)
-             gamco = HALF*(gamcl(i,j)+gamcr(i,j))
-          endif
-          ro = max(small_dens,ro)
-
-          co = sqrt(abs(gamco*po/ro))
-          co = max(csmall,co)
-          entho = (reo/ro + po/ro)/co**2
-          rstar = ro + (pstar - po)/co**2
-          rstar = max(small_dens,rstar)
-          estar = reo + (pstar - po)*entho
-          cstar = sqrt(abs(gamco*pstar/rstar))
-          cstar = max(cstar,csmall)
-
-          sgnm = sign(ONE,ustar)
-          spout = co - sgnm*uo
-          spin = cstar - sgnm*ustar
-          ushock = HALF*(spin + spout)
-          if (pstar-po .ge. ZERO) then
-             spin = ushock
-             spout = ushock
-          endif
-          if (spout-spin .eq. ZERO) then
-             scr = small*cav(i,j)
-          else
-             scr = spout-spin
-          endif
-          frac = (ONE + (spout + spin)/scr)*HALF
-          frac = max(ZERO,min(ONE,frac))
-
-          if (ustar .gt. ZERO) then
-             v1gdnv = v1l
-             v2gdnv = v2l
-          else if (ustar .lt. ZERO) then
-             v1gdnv = v1r
-             v2gdnv = v2r
-          else
-             v1gdnv = HALF*(v1l+v1r)
-             v2gdnv = HALF*(v2l+v2r)
-          endif
-          rgdnv = frac*rstar + (ONE - frac)*ro
-
-          ugdnv(i,j,kc) = frac*ustar + (ONE - frac)*uo
-          pgdnv(i,j,kc) = frac*pstar + (ONE - frac)*po
-
-          regdnv = frac*estar + (ONE - frac)*reo
-          if (spout .lt. ZERO) then
-             rgdnv = ro
-             ugdnv(i,j,kc) = uo
-             pgdnv(i,j,kc) = po
-             regdnv = reo
-          endif
-          if (spin .ge. ZERO) then
-             rgdnv = rstar
-             ugdnv(i,j,kc) = ustar
-             pgdnv(i,j,kc) = pstar
-             regdnv = estar
-          endif
-
-          gegdnv(i,j,kc) = pgdnv(i,j,kc)/regdnv + 1.0d0
-
-          pgdnv(i,j,kc) = max(pgdnv(i,j,kc),small_pres)
-
-          ! Enforce that fluxes through a symmetry plane or wall are hard zero.
-          if (idir .eq. 1) then
-             if (i.eq.domlo(1) .and. &
-                  (physbc_lo(1) .eq. Symmetry .or.  physbc_lo(1) .eq. SlipWall .or. &
-                  physbc_lo(1) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (i.eq.domhi(1)+1 .and. &
-                  (physbc_hi(1) .eq. Symmetry .or.  physbc_hi(1) .eq. SlipWall .or. &
-                  physbc_hi(1) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-          end if
-          if (idir .eq. 2) then
-             if (j.eq.domlo(2) .and. &
-                  (physbc_lo(2) .eq. Symmetry .or.  physbc_lo(2) .eq. SlipWall .or. &
-                  physbc_lo(2) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (j.eq.domhi(2)+1 .and. &
-                  (physbc_hi(2) .eq. Symmetry .or.  physbc_hi(2) .eq. SlipWall .or. &
-                  physbc_hi(2) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-          end if
-          if (idir .eq. 3) then
-             if (k3d.eq.domlo(3) .and. &
-                  (physbc_lo(3) .eq. Symmetry .or.  physbc_lo(3) .eq. SlipWall .or. &
-                  physbc_lo(3) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-             if (k3d.eq.domhi(3)+1 .and. &
-                  (physbc_hi(3) .eq. Symmetry .or.  physbc_hi(3) .eq. SlipWall .or. &
-                  physbc_hi(3) .eq. NoSlipWall) ) &
-                  ugdnv(i,j,kc) = ZERO
-          end if
-
-          ! Compute fluxes, order as conserved state (not q)
-          uflx(i,j,kflux,URHO) = rgdnv*ugdnv(i,j,kc)
-
-          if(idir.eq.1) then
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*v2gdnv
-          elseif(idir.eq.2) then
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*v2gdnv
-          else
-             uflx(i,j,kflux,UMX) = uflx(i,j,kflux,URHO)*v1gdnv
-             uflx(i,j,kflux,UMY) = uflx(i,j,kflux,URHO)*v2gdnv
-             uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,URHO)*ugdnv(i,j,kc) + pgdnv(i,j,kc)
-          endif
-
-          rhoetot = regdnv + HALF*rgdnv*(ugdnv(i,j,kc)**2 + v1gdnv**2 + v2gdnv**2)
-
-          uflx(i,j,kflux,UEDEN) = ugdnv(i,j,kc)*(rhoetot + pgdnv(i,j,kc))
-          uflx(i,j,kflux,UEINT) = ugdnv(i,j,kc)*regdnv
-
-          ! Treat K as a passively advected quantity but allow it to affect fluxes of (rho E) and momenta.
-          if (UESGS .gt. -1) then
-             n  = UESGS
-             nq = QESGS
-             if (ustar .gt. ZERO) then
-                qavg = ql(i,j,kc,nq)
-             else if (ustar .lt. ZERO) then
-                qavg = qr(i,j,kc,nq)
-             else
-                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
-             endif
-
-             uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
-
-             rho_K_contrib =  TWO3RD * rgdnv * qavg
-
-             if(idir.eq.1) then
-                uflx(i,j,kflux,UMX) = uflx(i,j,kflux,UMX) + rho_K_contrib
-             elseif(idir.eq.2) then
-                uflx(i,j,kflux,UMY) = uflx(i,j,kflux,UMY) + rho_K_contrib
-             elseif(idir.eq.3) then
-                uflx(i,j,kflux,UMZ) = uflx(i,j,kflux,UMZ) + rho_K_contrib
-             endif
-
-             uflx(i,j,kflux,UEDEN) = uflx(i,j,kflux,UEDEN) + ugdnv(i,j,kc) * rho_K_contrib
-          end if
-
-          do ipassive = 1, npassive
-             n  = upass_map(ipassive)
-             nq = qpass_map(ipassive)
-
-             if (ustar .gt. ZERO) then
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*ql(i,j,kc,nq)
-             else if (ustar .lt. ZERO) then
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qr(i,j,kc,nq)
-             else
-                qavg = HALF * (ql(i,j,kc,nq) + qr(i,j,kc,nq))
-                uflx(i,j,kflux,n) = uflx(i,j,kflux,URHO)*qavg
-             endif
-          enddo
-
-       enddo
+include 'riemannus_loopbody.f90'
+       end do
     enddo
 
   end subroutine riemannus

@@ -696,6 +696,7 @@ contains
     deallocate(fxy,fxz)
     deallocate(fyx,fyz)
     deallocate(fzx,fzy)
+    deallocate(flxtmp)
     deallocate(Ip,Im)
     deallocate(Ip_g,Im_g)
     deallocate(Ip_gc,Im_gc)
