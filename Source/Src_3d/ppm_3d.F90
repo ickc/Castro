@@ -92,10 +92,11 @@ contains
     integer          k3d,kc
 
     ! local
-    integer i,j,k
+    integer i,j
 
-    double precision dsl, dsr, dsc
+    double precision dsl, dsr, dsc, dtdx, dtdy, dtdz
     double precision sigma, s6, dsvlm, dsvlp, dsvlz, sp, sm
+!    double precision dsm2, dsm1, ds00, dsp1, dsp2
 
     ! \delta s_{\ib}^{vL}
     double precision, allocatable :: dsvlx(:)
@@ -126,6 +127,10 @@ contains
          call bl_error("Need more ghost cells on array in ppm_type1")
     end if
 
+    dtdx = dt/dx
+    dtdy = dt/dy
+    dtdz = dt/dz
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! x-direction
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -135,20 +140,32 @@ contains
     do j=ilo2-1,ihi2+1
 
        ! compute van Leer slopes in x-direction
-       !dir$ simd private(dsc,dsl,dsr)
+
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
+#endif
+       !DIR$ private(dsc,dsl,dsr)
        do i=ilo1-2,ihi1+2
-          dsc = HALF * (s(i+1,j,k3d) - s(i-1,j,k3d))
-          dsl = TWO  * (s(i  ,j,k3d) - s(i-1,j,k3d))
-          dsr = TWO  * (s(i+1,j,k3d) - s(i  ,j,k3d))
-          if (dsl*dsr .gt. ZERO) then
-             dsvlx(i) = sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
-          else
-             dsvlx(i) = ZERO
-          end if
+          dsc = FOURTH * (s(i+1,j,k3d) - s(i-1,j,k3d))
+          dsl =          (s(i  ,j,k3d) - s(i-1,j,k3d))
+          dsr =          (s(i+1,j,k3d) - s(i  ,j,k3d))
+          dsvlx(i) = (ONE+sign(ONE,dsl*dsr))*sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
        end do
 
        ! interpolate s to x-edges
-       !dir$ simd
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8)
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4)
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2)
+#endif
        do i=ilo1-1,ihi1+2
           sedgex(i) = HALF*(s(i,j,k3d)+s(i-1,j,k3d)) &
                - SIXTH*(dsvlx(i)-dsvlx(i-1))
@@ -157,7 +174,15 @@ contains
           sedgex(i) = min(sedgex(i),max(s(i,j,k3d),s(i-1,j,k3d)))
        end do
 
-       !dir$ simd private(sp,sm,s6,sigma)
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
+#endif
+       !DIR$ private(sp,sm,s6,sigma)
        do i=ilo1-1,ihi1+1
 
           ! copy sedge into sp and sm
@@ -205,7 +230,7 @@ contains
           ! Im integrates to the left edge of a cell
 
           ! u-c wave
-          sigma = abs(u(i,j,k3d,1)-cspd(i,j,k3d))*dt/dx
+          sigma = abs(u(i,j,k3d,1)-cspd(i,j,k3d))*dtdx
 
           if (u(i,j,k3d,1)-cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,1,1) = sp
@@ -222,7 +247,7 @@ contains
           endif
 
           ! u wave
-          sigma = abs(u(i,j,k3d,1))*dt/dx
+          sigma = abs(u(i,j,k3d,1))*dtdx
 
           if (u(i,j,k3d,1) <= ZERO) then
              Ip(i,j,kc,1,2) = sp 
@@ -239,7 +264,7 @@ contains
           endif
 
           ! u+c wave
-          sigma = abs(u(i,j,k3d,1)+cspd(i,j,k3d))*dt/dx
+          sigma = abs(u(i,j,k3d,1)+cspd(i,j,k3d))*dtdx
 
           if (u(i,j,k3d,1)+cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,1,3) = sp 
@@ -266,22 +291,33 @@ contains
 
     ! compute van Leer slopes in y-direction
     do j=ilo2-2,ihi2+2
-       !dir$ simd private(dsc,dsl,dsr)
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
+#endif
+       !DIR$ private(dsc,dsl,dsr)
        do i=ilo1-1,ihi1+1
-          dsc = HALF * (s(i,j+1,k3d) - s(i,j-1,k3d))
-          dsl = TWO  * (s(i,j  ,k3d) - s(i,j-1,k3d))
-          dsr = TWO  * (s(i,j+1,k3d) - s(i,j  ,k3d))
-          if (dsl*dsr .gt. ZERO) then
-             dsvly(i,j) = sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
-          else
-             dsvly(i,j) = ZERO
-          end if
+          dsc = FOURTH * (s(i,j+1,k3d) - s(i,j-1,k3d))
+          dsl =          (s(i,j  ,k3d) - s(i,j-1,k3d))
+          dsr =          (s(i,j+1,k3d) - s(i,j  ,k3d))
+          dsvly(i,j) = (ONE+sign(ONE,dsl*dsr))*sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
        end do
     end do
 
     ! interpolate s to y-edges
     do j=ilo2-1,ihi2+2
-       !dir$ simd
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8)
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4)
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2)
+#endif
        do i=ilo1-1,ihi1+1
           sedgey(i,j) = HALF*(s(i,j,k3d)+s(i,j-1,k3d)) &
                - SIXTH*(dsvly(i,j)-dsvly(i,j-1))
@@ -292,7 +328,15 @@ contains
     end do
 
     do j=ilo2-1,ihi2+1
-       !dir$ simd private(sp,sm,s6,sigma)
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
+#endif
+       !DIR$ private(sp,sm,s6,sigma)
        do i=ilo1-1,ihi1+1
 
           ! copy sedge into sp and sm
@@ -333,7 +377,7 @@ contains
           s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
 
           ! v-c wave
-          sigma = abs(u(i,j,k3d,2)-cspd(i,j,k3d))*dt/dy
+          sigma = abs(u(i,j,k3d,2)-cspd(i,j,k3d))*dtdy
 
           if (u(i,j,k3d,2)-cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,2,1) = sp
@@ -350,7 +394,7 @@ contains
           endif
 
           ! v wave
-          sigma = abs(u(i,j,k3d,2))*dt/dy
+          sigma = abs(u(i,j,k3d,2))*dtdy
 
           if (u(i,j,k3d,2) <= ZERO) then
              Ip(i,j,kc,2,2) = sp 
@@ -367,7 +411,7 @@ contains
           endif
 
           ! v+c wave
-          sigma = abs(u(i,j,k3d,2)+cspd(i,j,k3d))*dt/dy
+          sigma = abs(u(i,j,k3d,2)+cspd(i,j,k3d))*dtdy
 
           if (u(i,j,k3d,2)+cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,2,3) = sp 
@@ -392,56 +436,46 @@ contains
 
     do j=ilo2-1,ihi2+1
 
-       !dir$ simd private(k,dsc,dsl,dsr,dsvlm,dsvlp,dsvlz,sm,sp,s6,sigma)
+       !DIR$ SIMD &
+#ifdef BL_ALIGN_64_BYTE
+       !DIR$ vectorlength(8) &
+#elif BL_ALIGN_32_BYTE
+       !DIR$ vectorlength(4) &
+#elif BL_ALIGN_16_BYTE
+       !DIR$ vectorlength(2) &
+#endif
+       !DIR$ private(dsc,dsl,dsr,dsvlm,dsvlp,dsvlz,sm,sp,s6,sigma)
        do i=ilo1-1,ihi1+1
 
           ! compute on slab below
-          k = k3d-1
-          dsc = HALF * (s(i,j,k+1) - s(i,j,k-1))
-          dsl = TWO  * (s(i,j,k  ) - s(i,j,k-1))
-          dsr = TWO  * (s(i,j,k+1) - s(i,j,k  ))
-          if (dsl*dsr .gt. ZERO) then
-             dsvlm = sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
-          else
-             dsvlm = ZERO
-          end if
-
-          ! compute on slab above
-          k = k3d+1
-          dsc = HALF * (s(i,j,k+1) - s(i,j,k-1))
-          dsl = TWO  * (s(i,j,k  ) - s(i,j,k-1))
-          dsr = TWO  * (s(i,j,k+1) - s(i,j,k  ))
-          if (dsl*dsr .gt. ZERO) then
-             dsvlp = sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
-          else
-             dsvlp = ZERO
-          end if
+          dsc = FOURTH * (s(i,j,k3d  ) - s(i,j,k3d-2))
+          dsl =          (s(i,j,k3d-1) - s(i,j,k3d-2))
+          dsr =          (s(i,j,k3d  ) - s(i,j,k3d-1))
+          dsvlm = (ONE+sign(ONE,dsl*dsr))*sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
 
           ! compute on current slab
-          k = k3d
-          dsc = HALF * (s(i,j,k+1) - s(i,j,k-1))
-          dsl = TWO  * (s(i,j,k  ) - s(i,j,k-1))
-          dsr = TWO  * (s(i,j,k+1) - s(i,j,k  ))
-          if (dsl*dsr .gt. ZERO) then
-             dsvlz = sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
-          else
-             dsvlz = ZERO
-          end if
+          dsc = FOURTH * (s(i,j,k3d+1) - s(i,j,k3d-1))
+          dsl =          (s(i,j,k3d  ) - s(i,j,k3d-1))
+          dsr =          (s(i,j,k3d+1) - s(i,j,k3d  ))
+          dsvlz = (ONE+sign(ONE,dsl*dsr))*sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
+
+          ! compute on slab above
+          dsc = FOURTH * (s(i,j,k3d+2) - s(i,j,k3d  ))
+          dsl =          (s(i,j,k3d+1) - s(i,j,k3d  ))
+          dsr =          (s(i,j,k3d+2) - s(i,j,k3d+1))
+          dsvlp = (ONE+sign(ONE,dsl*dsr))*sign(ONE,dsc)*min(abs(dsc),abs(dsl),abs(dsr))
 
           ! interpolate to lo face
-          k = k3d
-          sm = HALF*(s(i,j,k)+s(i,j,k-1)) - SIXTH*(dsvlz-dsvlm)
+          sm = HALF*(s(i,j,k3d)+s(i,j,k3d-1)) - SIXTH*(dsvlz-dsvlm)
           ! make sure sedge lies in between adjacent cell-centered values
-          sm = max(sm,min(s(i,j,k),s(i,j,k-1)))
-          sm = min(sm,max(s(i,j,k),s(i,j,k-1)))
+          sm = max(sm,min(s(i,j,k3d),s(i,j,k3d-1)))
+          sm = min(sm,max(s(i,j,k3d),s(i,j,k3d-1)))
 
           ! interpolate to hi face
-          k = k3d+1
-          sp = HALF*(s(i,j,k)+s(i,j,k-1)) - SIXTH*(dsvlp-dsvlz)
-
+          sp = HALF*(s(i,j,k3d)+s(i,j,k3d+1)) - SIXTH*(dsvlp-dsvlz)
           ! make sure sedge lies in between adjacent cell-centered values
-          sp = max(sp,min(s(i,j,k),s(i,j,k-1)))
-          sp = min(sp,max(s(i,j,k),s(i,j,k-1)))
+          sp = max(sp,min(s(i,j,k3d),s(i,j,k3d+1)))
+          sp = min(sp,max(s(i,j,k3d),s(i,j,k3d+1)))
 
           if (ppm_flatten_before_integrals == 1) then
              ! flatten the parabola BEFORE doing the other                     
@@ -449,7 +483,6 @@ contains
              sm = flatn(i,j,k3d)*sm + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
              sp = flatn(i,j,k3d)*sp + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
           endif
-
 
           ! modify using quadratic limiters
           if ((sp-s(i,j,k3d))*(s(i,j,k3d)-sm) .le. ZERO) then
@@ -478,7 +511,7 @@ contains
           s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
 
           ! w-c wave
-          sigma = abs(u(i,j,k3d,3)-cspd(i,j,k3d))*dt/dz
+          sigma = abs(u(i,j,k3d,3)-cspd(i,j,k3d))*dtdz
 
           if (u(i,j,k3d,3)-cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,3,1) = sp 
@@ -495,7 +528,7 @@ contains
           endif
 
           ! w wave
-          sigma = abs(u(i,j,k3d,3))*dt/dz
+          sigma = abs(u(i,j,k3d,3))*dtdz
 
           if (u(i,j,k3d,3) <= ZERO) then
              Ip(i,j,kc,3,2) = sp 
@@ -512,7 +545,7 @@ contains
           endif
 
           ! w+c wave
-          sigma = abs(u(i,j,k3d,3)+cspd(i,j,k3d))*dt/dz
+          sigma = abs(u(i,j,k3d,3)+cspd(i,j,k3d))*dtdz
 
           if (u(i,j,k3d,3)+cspd(i,j,k3d) <= ZERO) then
              Ip(i,j,kc,3,3) = sp 
