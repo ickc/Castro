@@ -1,7 +1,5 @@
 module ppm_module
 
-  use align_array_module, only : alignbyte, align_padding
-
   implicit none
 
   private
@@ -107,19 +105,11 @@ contains
     double precision, allocatable :: sedgex(:)
     double precision, allocatable :: sedgey(:,:)
 
-    integer :: iloalg, ihialg
-
-    ! Index before padding: ilo1-2:ihi1+2
-    ! Index after  padinng: iloalg:ihialg
-    ! Array elements at (ilo1-1,...) are targeted for alignment,
-    ! because ilo1-1 is the starting index for many loops
-    call align_padding(ilo1-1, ilo1-2, ihi1+2, iloalg, ihialg)
-
-    allocate(dsvlx (iloalg:ihialg))
-    allocate(dsvly (iloalg:ihialg, ilo2-2:ihi2+2))
+    allocate(dsvlx (ilo1-2:ihi1+2))
+    allocate(dsvly (ilo1-1:ihi1+1, ilo2-2:ihi2+2))
     
-    allocate(sedgex(iloalg:ihialg))
-    allocate(sedgey(iloalg:ihialg, ilo2-1:ihi2+2))
+    allocate(sedgex(ilo1-1:ihi1+2))
+    allocate(sedgey(ilo1-1:ihi1+1, ilo2-1:ihi2+2))
 
     if (ppm_type .ne. 1) &
          call bl_error("Should have ppm_type = 1 in ppm_type1")
