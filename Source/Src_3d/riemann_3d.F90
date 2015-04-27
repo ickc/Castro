@@ -1,6 +1,6 @@
 module riemann_module
 
-  use align_array_module
+  use align_array_module, only : alignbyte, align_next_index
   use bl_constants_module
 
   implicit none
@@ -974,18 +974,14 @@ contains
     logical :: zerov_lo, zerov_hi
     double precision :: zerov_yzfac, zerov_xfac(qpd_l1:qpd_h1)
     integer :: iu, iv1, iv2, im1, im2, im3
-    integer :: ilo_align, rem
+    integer :: ilo_align
 
 #if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
 !dir$ attributes align : alignbyte :: us1d, rgd1d, zerov_xfac
 #endif
 
-    rem = modulo(ilo-qpd_l1, nalign_double)
-    if (rem .eq. 0) then
-       ilo_align = ilo
-    else
-       ilo_align = ilo + (nalign_double - rem)
-    end if
+    ! Given that (qpd_l1,...) is aligned, what's the first index after ilo that is aligned?
+    ilo_align = align_next_index(qpd_l1, ilo)
 
     if (idir .eq. 1) then
        iu = QU

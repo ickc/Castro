@@ -1,6 +1,6 @@
 module advection_module
 
-  use align_array_module, only : alignbyte, nalign_double
+  use align_array_module, only : alignbyte, align_padding
 
   implicit none
   
@@ -22,9 +22,6 @@ contains
 ! ::: :: csml        => (const)  local small c val
 ! ::: :: flatn       => (const)  flattening parameter
 ! ::: :: src         => (const)  source
-! ::: :: nx          => (const)  number of cells in X direction
-! ::: :: ny          => (const)  number of cells in Y direction
-! ::: :: nz          => (const)  number of cells in Z direction
 ! ::: :: dx          => (const)  grid spacing in X direction
 ! ::: :: dy          => (const)  grid spacing in Y direction
 ! ::: :: dz          => (const)  grid spacing in Z direction
@@ -149,7 +146,7 @@ contains
     
     type (eos_t) :: eos_state
 
-    integer :: iloalg, ihialg, nx, rem
+    integer :: iloalg, ihialg
 
 #if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
 !dir$ attributes align : alignbyte :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
@@ -160,17 +157,11 @@ contains
 !dir$ attributes align : alignbyte :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
 #endif
 
-    ! before padding
-    iloalg = ilo1-1
-    ihialg = ihi1+2
-
-    ! after padding
-    iloalg = min(iloalg, ilo1-nalign_double)
-    nx = ihialg - iloalg + 1  ! We want this to be a multiple of nalign_double
-    rem = modulo(nx, nalign_double)
-    if (rem .ne. 0) then
-       ihialg = ihialg + (nalign_double-rem)
-    end if
+    ! Index before padding: ilo1-1:ihi1+2
+    ! Index after  padinng: iloalg:ihialg
+    ! Array elements at (ilo1,...) are targeted for alignment, 
+    ! because ilo1 is the starting index for many loops
+    call align_padding(ilo1, ilo1-1, ihi1+2, iloalg, ihialg)
 
     allocate ( pgdnvx(iloalg:ihialg,ilo2-1:ihi2+2,2))
     allocate ( ugdnvx(iloalg:ihialg,ilo2-1:ihi2+2,2))
