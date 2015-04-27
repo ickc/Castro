@@ -1,5 +1,7 @@
 module ppm_module
 
+  use align_array_module, only : alignbyte, align_padding
+
   implicit none
 
   private
@@ -92,27 +94,55 @@ contains
     integer          k3d,kc
 
     ! local
-    integer i,j,k
+    integer i,j,k, iloa_this, ihia_this
 
     double precision dsl, dsr, dsc
     double precision sigma, s6
 
     ! s_{\ib,+}, s_{\ib,-}
-    double precision, allocatable :: sp(:,:)
-    double precision, allocatable :: sm(:,:)
+    double precision, allocatable, save :: sp(:,:)
+    double precision, allocatable, save :: sm(:,:)
 
     ! \delta s_{\ib}^{vL}
-    double precision, allocatable :: dsvl(:,:)
-    double precision, allocatable :: dsvlm(:,:)
-    double precision, allocatable :: dsvlp(:,:)
+    double precision, allocatable, save :: dsvl(:,:)
+    double precision, allocatable, save :: dsvlm(:,:)
+    double precision, allocatable, save :: dsvlp(:,:)
 
     ! s_{i+\half}^{H.O.}
-    double precision, allocatable :: sedge(:,:)
-    double precision, allocatable :: sedgez(:,:,:)
+    double precision, allocatable, save :: sedge(:,:)
 
-    ! cell-centered indexing
-    allocate(sp(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
-    allocate(sm(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
+    integer, save :: iloalg=-1, ihialg=-2, ilo2_save=-1, ihi2_save=-2
+
+!$omp threadprivate(sp,sm,dsvl,dsvlm,dsvlp,sedge,iloalg,ihialg,ilo2_save,ihi2_save)
+
+    ! Index before padding: ilo1-2:ihi1+2
+    ! Index after  padinng: iloalg:ihialg
+    ! Array elements at (ilo1-1,...) are targeted for alignment,
+    ! because ilo1-1 is the starting index for many loops
+    call align_padding(ilo1-1, ilo1-2, ihi1+2, iloa_this, ihia_this)
+
+    if (iloa_this .ne. iloalg .or. ihia_this .ne. ihialg &
+         .or. ilo2 .ne. ilo2_save .or. ihi2 .ne. ihi2_save) then
+
+       iloalg = iloa_this
+       ihialg = ihia_this
+       ilo2_save = ilo2
+       ihi2_save = ihi2
+
+       if (allocated(sp)) then
+          deallocate(sp,sm,dsvl,dsvlm,dsvlp,sedge)
+       end if
+
+       allocate(sp   (iloalg:ihialg, ilo2-1:ihi2+1))
+       allocate(sm   (iloalg:ihialg, ilo2-1:ihi2+1))
+       
+       allocate(dsvl (iloalg:ihialg, ilo2-2:ihi2+2))
+       
+       allocate(dsvlm(iloalg:ihialg, ilo2-1:ihi2+1))
+       allocate(dsvlp(iloalg:ihialg, ilo2-1:ihi2+1))
+       
+       allocate(sedge(iloalg:ihialg, ilo2-1:ihi2+2))
+    end if
 
     if (ppm_type .ne. 1) &
          call bl_error("Should have ppm_type = 1 in ppm_type1")
@@ -132,12 +162,6 @@ contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! x-direction
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    ! cell-centered indexing w/extra x-ghost cell
-    allocate(dsvl(ilo1-2:ihi1+2,ilo2-1:ihi2+1))
-
-    ! edge-centered indexing for x-faces -- ppm_type = 1 only
-    allocate(sedge(ilo1-1:ihi1+2,ilo2-1:ihi2+1))
 
     ! compute s at x-edges
 
@@ -265,17 +289,9 @@ contains
        end do
     end do
 
-    deallocate(sedge,dsvl)
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! y-direction
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    ! cell-centered indexing w/extra y-ghost cell
-    allocate( dsvl(ilo1-1:ihi1+1,ilo2-2:ihi2+2))
-
-    ! edge-centered indexing for y-faces
-    allocate(sedge(ilo1-1:ihi1+1,ilo2-1:ihi2+2))
 
     ! compute s at y-edges
 
@@ -396,18 +412,9 @@ contains
        end do
     end do
 
-    deallocate(dsvl,sedge)
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! z-direction
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    ! cell-centered indexing
-    allocate( dsvl(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
-    allocate(dsvlm(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
-    allocate(dsvlp(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
-
-    allocate(sedgez(ilo1-1:ihi1+1,ilo2-2:ihi2+3,k3d-1:k3d+2))
 
     ! compute s at z-edges
 
@@ -545,8 +552,6 @@ contains
 
        end do
     end do
-
-    deallocate(dsvl,dsvlm,dsvlp,sp,sm,sedgez)
 
   end subroutine ppm_type1
 

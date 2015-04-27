@@ -15,7 +15,6 @@ f90EXE_sources += trace_$(DIM)d.f90
 f90EXE_sources += trace_ppm_$(DIM)d.f90
 f90EXE_sources += slope_$(DIM)d.f90
 f90EXE_sources += trans_$(DIM)d.f90
-f90EXE_sources += ppm_$(DIM)d.f90
 f90EXE_sources += flatten_$(DIM)d.f90
 
 f90EXE_sources += compute_temp_$(DIM)d.f90
@@ -24,6 +23,7 @@ f90EXE_sources += EstDt_$(DIM)d.f90
 f90EXE_sources += reset_internal_energy_$(DIM)d.f90
 
 F90EXE_sources += Castro_advection_$(DIM)d.F90 
+F90EXE_sources += ppm_$(DIM)d.F90
 F90EXE_sources += riemann_$(DIM)d.F90 
 
 ifeq ($(USE_GRAV), TRUE)
