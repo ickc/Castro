@@ -140,14 +140,7 @@ contains
 
        ! compute van Leer slopes in x-direction
 
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(dsc,dsl,dsr)
        do i=ilo1-2,ihi1+2
           dsc = FOURTH * (s(i+1,j,k3d) - s(i-1,j,k3d))
@@ -157,14 +150,7 @@ contains
        end do
 
        ! interpolate s to x-edges
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8)
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4)
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2)
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN)
        do i=ilo1-1,ihi1+2
           sedgex(i) = HALF*(s(i,j,k3d)+s(i-1,j,k3d)) &
                - SIXTH*(dsvlx(i)-dsvlx(i-1))
@@ -173,14 +159,7 @@ contains
           sedgex(i) = min(sedgex(i),max(s(i,j,k3d),s(i-1,j,k3d)))
        end do
 
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(sp,sm,s6,sigma)
        do i=ilo1-1,ihi1+1
 
@@ -278,14 +257,7 @@ contains
 
     ! compute van Leer slopes in y-direction
     do j=ilo2-2,ihi2+2
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(dsc,dsl,dsr)
        do i=ilo1-1,ihi1+1
           dsc = FOURTH * (s(i,j+1,k3d) - s(i,j-1,k3d))
@@ -297,14 +269,7 @@ contains
 
     ! interpolate s to y-edges
     do j=ilo2-1,ihi2+2
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8)
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4)
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2)
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN)
        do i=ilo1-1,ihi1+1
           sedgey(i,j) = HALF*(s(i,j,k3d)+s(i,j-1,k3d)) &
                - SIXTH*(dsvly(i,j)-dsvly(i,j-1))
@@ -315,14 +280,7 @@ contains
     end do
 
     do j=ilo2-1,ihi2+1
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(sp,sm,s6,sigma)
        do i=ilo1-1,ihi1+1
 
@@ -411,14 +369,7 @@ contains
 
     do j=ilo2-1,ihi2+1
 
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(dsc,dsl,dsr,dsvlm,dsvlp,dsvlz,sm,sp,s6,sigma)
        do i=ilo1-1,ihi1+1
 

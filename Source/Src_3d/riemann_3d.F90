@@ -69,7 +69,7 @@ contains
     double precision :: cl, cr
     type (eos_t) :: eos_state
 
-#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
+#if defined(BL_ALIGN_BYTE)
 !dir$ attributes align : alignbyte :: smallc,cavg,gamcm,gamcp
 #endif
 
@@ -976,7 +976,7 @@ contains
     integer :: iu, iv1, iv2, im1, im2, im3
     integer :: ilo_align
 
-#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
+#if defined(BL_ALIGN_BYTE)
 !dir$ attributes align : alignbyte :: us1d, rgd1d, zerov_xfac
 #endif
 
@@ -1052,14 +1052,7 @@ contains
 include 'riemannus_loopbody.f90'
        end do
 
-       !DIR$ SIMD &
-#ifdef BL_ALIGN_64_BYTE
-       !DIR$ vectorlength(8) &
-#elif BL_ALIGN_32_BYTE
-       !DIR$ vectorlength(4) &
-#elif BL_ALIGN_16_BYTE
-       !DIR$ vectorlength(2) &
-#endif
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(rgdnv,v1gdnv,v2gdnv,regdnv) &
        !DIR$ private(rl,ul,v1l,v2l,pl,rel) &
        !DIR$ private(rr,ur,v1r,v2r,pr,rer) &
@@ -1068,7 +1061,7 @@ include 'riemannus_loopbody.f90'
        !DIR$ private(ro,uo,po,reo,co,gamco,entho) &
        !DIR$ private(sgnm,spin,spout,ushock,frac) &
        !DIR$ private(wsmall,csmall)
-#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
+#if defined(BL_ALIGN_BYTE)
        !DIR$ vector aligned
 #endif
        do i = ilo_align, ihi

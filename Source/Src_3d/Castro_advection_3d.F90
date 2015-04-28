@@ -148,7 +148,7 @@ contains
 
     integer :: iloalg, ihialg
 
-#if defined(BL_ALIGN_64_BYTE) || defined(BL_ALIGN_32_BYTE) || defined(BL_ALIGN_16_BYTE)
+#if defined(BL_ALIGN_BYTE)
 !dir$ attributes align : alignbyte :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
 !dir$ attributes align : alignbyte :: qmyz,qpyz,qmzx,qpzx,qmzy,qpzy,qxl,qxr,qyl,qyr,qzl,qzr,fx,fy,fz
 !dir$ attributes align : alignbyte :: fxy,fxz,fyx,fyz,fzx,fzy,flxtmp,pgdnvx,ugdnvx,gegdnvx,pgdnvxf,ugdnvxf,gegdnvxf
