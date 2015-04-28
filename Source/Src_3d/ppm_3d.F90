@@ -200,11 +200,12 @@ contains
           end do
        endif
 
+       ! compute x-component of Ip and Im
+
        !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
        !DIR$ private(s6,sigma)
        do i=ilo1-1,ihi1+1
-          ! compute x-component of Ip and Im
-          s6 = SIX*s(i,j,k3d) - THREE*(sm+spx(i))
+          s6 = SIX*s(i,j,k3d) - THREE*(smx(i)+spx(i))
 
           ! Ip/m is the integral under the parabola for the extent
           ! that a wave can travel over a timestep
@@ -283,87 +284,93 @@ contains
        end do
     end do
 
+    ! flatten the parabola BEFORE doing the other                     
+    ! monotonization -- this is the method that Flash does       
+    if (ppm_flatten_before_integrals == 1) then
+       do j=ilo2-1,ihi2+2
+          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          do i=ilo1-1,ihi1+1
+             sedgey(i,j) = flatn(i,j,k3d)*sedgey(i,j) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+          end do
+       end do
+    end if
+    
+    ! modify using quadratic limiters
     do j=ilo2-1,ihi2+1
        !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(sp,sm,s6,sigma)
+       !DIR$ private(ssm,ssp)
        do i=ilo1-1,ihi1+1
+          ssm = s(i,j,k3d) - sedgey(i,j)
+          ssp = sedgey(i,j+1) - s(i,j,k3d)
 
-          ! copy sedge into sp and sm
-          sp = sedgey(i,j+1)
-          sm = sedgey(i,j  )
+          spx(i) = sedgey(i,j+1)
+          smx(i) = sedgey(i,j)
 
-          if (ppm_flatten_before_integrals == 1) then
-             ! flatten the parabola BEFORE doing the other                     
-             ! monotonization -- this is the method that Flash does       
-             sm = flatn(i,j,k3d)*sm + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-             sp = flatn(i,j,k3d)*sp + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-          endif
-
-          ! modify using quadratic limiters
-          if ((sp-s(i,j,k3d))*(s(i,j,k3d)-sm) .le. ZERO) then
-             sp = s(i,j,k3d)
-             sm = s(i,j,k3d)
-
-          else if (abs(sp-s(i,j,k3d)) .ge. TWO*abs(sm-s(i,j,k3d))) then
-          !else if (-(sp-sm)**2/SIX > &
-          !     (sp - sm)*(s(i,j,k3d) - HALF*(sm + sp))) then
-             sp = THREE*s(i,j,k3d) - TWO*sm
-
-          else if (abs(sm-s(i,j,k3d)) .ge. TWO*abs(sp-s(i,j,k3d))) then
-          !else if ((sp-sm)*(s(i,j,k3d) - HALF*(sm + sp)) > &
-          !     (sp - sm)**2/SIX) then
-             sm = THREE*s(i,j,k3d) - TWO*sp
+          if (ssm*ssp .le. ZERO) then
+             spx(i) = s(i,j,k3d)
+             smx(i) = s(i,j,k3d)
+          else if (abs(ssp) .ge. TWO*abs(ssm)) then
+             spx(i) = THREE*s(i,j,k3d) - TWO*smx(i)
+          else if (abs(ssm) .ge. TWO*abs(ssp)) then
+             smx(i) = THREE*s(i,j,k3d) - TWO*spx(i)
           end if
+       end do
 
-          if (ppm_flatten_before_integrals == 2) then
-             ! flatten the parabola AFTER doing the monotonization --
-             ! this is the method that Miller & Colella do
-             sm = flatn(i,j,k3d)*sm + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-             sp = flatn(i,j,k3d)*sp + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-          endif
+       ! flatten the parabola AFTER doing the monotonization --
+       ! this is the method that Miller & Colella do
+       if (ppm_flatten_before_integrals == 2) then
+          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          do i=ilo1-1,ihi1+1
+             smx(i) = flatn(i,j,k3d)*smx(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+             spx(i) = flatn(i,j,k3d)*spx(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+          end do
+       endif
 
-          ! compute y-component of Ip and Im
-          s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
+       ! compute y-component of Ip and Im
+
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
+       !DIR$ private(s6,sigma)
+       do i=ilo1-1,ihi1+1
+          s6 = SIX*s(i,j,k3d) - THREE*(smx(i)+spx(i))
 
           ! v-c wave
           sigma = (u(i,j,k3d,2) - cspd(i,j,k3d))*dtdy
           if (sigma < ZERO) then
-             Ip(i,j,kc,2,1) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,2,1) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,1) = sp
+             Ip(i,j,kc,2,1) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,2,1) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,2,1) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,2,1) = sm 
+             Im(i,j,kc,2,1) = smx(i) 
           end if
 
           ! v wave          
           sigma =u(i,j,k3d,2)*dtdy
           if (sigma < ZERO) then
-             Ip(i,j,kc,2,2) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,2,2) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,2) = sp
+             Ip(i,j,kc,2,2) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,2,2) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,2,2) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,2,2) = sm              
+             Im(i,j,kc,2,2) = smx(i)              
           end if
 
           ! v+c wave
           sigma = (u(i,j,k3d,2) + cspd(i,j,k3d))*dtdy
           if (sigma < ZERO) then
-             Ip(i,j,kc,2,3) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,2,3) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,3) = sp
+             Ip(i,j,kc,2,3) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,2,3) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,2,3) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,2,3) = sm 
+             Im(i,j,kc,2,3) = smx(i) 
           end if
-
        end do
     end do
 
