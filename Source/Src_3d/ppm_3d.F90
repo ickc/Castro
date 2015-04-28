@@ -141,8 +141,7 @@ contains
 
        ! compute van Leer slopes in x-direction
 
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(dsc,dsl,dsr)
+       !DIR$ SIMD private(dsc,dsl,dsr)
        do i=ilo1-2,ihi1+2
           dsc = FOURTH * (s(i+1,j,k3d) - s(i-1,j,k3d))
           dsl =          (s(i  ,j,k3d) - s(i-1,j,k3d))
@@ -151,7 +150,7 @@ contains
        end do
 
        ! interpolate s to x-edges
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+       !DIR$ SIMD
        do i=ilo1-1,ihi1+2
           sedgex(i) = HALF*(s(i,j,k3d)+s(i-1,j,k3d)) &
                - SIXTH*(dsvlx(i)-dsvlx(i-1))
@@ -163,7 +162,7 @@ contains
        ! flatten the parabola BEFORE doing the other                     
        ! monotonization -- this is the method that Flash does       
        if (ppm_flatten_before_integrals == 1) then
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+2
              sedgex(i) = flatn(i,j,k3d)*sedgex(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
           end do
@@ -171,8 +170,7 @@ contains
 
        ! modify using quadratic limiters -- note this version of the limiting comes
        ! from Colella and Sekora (2008), not the original PPM paper.
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(ssm,ssp)
+       !DIR$ SIMD private(ssm,ssp)
        do i=ilo1-1,ihi1+1
           ssm = s(i,j,k3d) - sedgex(i)
           ssp = sedgex(i+1) - s(i,j,k3d)
@@ -193,7 +191,7 @@ contains
        ! flatten the parabola AFTER doing the monotonization --
        ! this is the method that Miller & Colella do
        if (ppm_flatten_before_integrals == 2) then
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+1
              sm(i) = flatn(i,j,k3d)*sm(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
              sp(i) = flatn(i,j,k3d)*sp(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
@@ -202,8 +200,7 @@ contains
 
        ! compute x-component of Ip and Im
 
-       !DIR$ SIMD &
-       !DIR$ private(s6,sigma)
+       !DIR$ SIMD private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
 
@@ -262,8 +259,7 @@ contains
 
     ! compute van Leer slopes in y-direction
     do j=ilo2-2,ihi2+2
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(dsc,dsl,dsr)
+       !DIR$ SIMD private(dsc,dsl,dsr)
        do i=ilo1-1,ihi1+1
           dsc = FOURTH * (s(i,j+1,k3d) - s(i,j-1,k3d))
           dsl =          (s(i,j  ,k3d) - s(i,j-1,k3d))
@@ -274,7 +270,7 @@ contains
 
     ! interpolate s to y-edges
     do j=ilo2-1,ihi2+2
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+       !DIR$ SIMD 
        do i=ilo1-1,ihi1+1
           sedgey(i,j) = HALF*(s(i,j,k3d)+s(i,j-1,k3d)) &
                - SIXTH*(dsvly(i,j)-dsvly(i,j-1))
@@ -288,7 +284,7 @@ contains
     ! monotonization -- this is the method that Flash does       
     if (ppm_flatten_before_integrals == 1) then
        do j=ilo2-1,ihi2+2
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+1
              sedgey(i,j) = flatn(i,j,k3d)*sedgey(i,j) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
           end do
@@ -297,8 +293,7 @@ contains
     
     ! modify using quadratic limiters
     do j=ilo2-1,ihi2+1
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(ssm,ssp)
+       !DIR$ SIMD private(ssm,ssp)
        do i=ilo1-1,ihi1+1
           ssm = s(i,j,k3d) - sedgey(i,j)
           ssp = sedgey(i,j+1) - s(i,j,k3d)
@@ -319,7 +314,7 @@ contains
        ! flatten the parabola AFTER doing the monotonization --
        ! this is the method that Miller & Colella do
        if (ppm_flatten_before_integrals == 2) then
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+1
              sm(i) = flatn(i,j,k3d)*sm(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
              sp(i) = flatn(i,j,k3d)*sp(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
@@ -328,8 +323,7 @@ contains
 
        ! compute y-component of Ip and Im
 
-       !DIR$ SIMD &
-       !DIR$ private(s6,sigma)
+       !DIR$ SIMD private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
 
@@ -380,8 +374,7 @@ contains
 
     do j=ilo2-1,ihi2+1
 
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(dsc,dsl,dsr,dsvlm,dsvlp,dsvlz)
+       !DIR$ SIMD private(dsc,dsl,dsr,dsvlm,dsvlp,dsvlz)
        do i=ilo1-1,ihi1+1
           ! compute on slab below
           dsc = FOURTH * (s(i,j,k3d  ) - s(i,j,k3d-2))
@@ -417,7 +410,7 @@ contains
        ! flatten the parabola BEFORE doing the other                     
        ! monotonization -- this is the method that Flash does       
        if (ppm_flatten_before_integrals == 1) then
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+1
              sm(i) = flatn(i,j,k3d)*sm(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
              sp(i) = flatn(i,j,k3d)*sp(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
@@ -425,8 +418,7 @@ contains
        endif
 
        ! modify using quadratic limiters
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(ssm,ssp)
+       !DIR$ SIMD private(ssm,ssp)
        do i=ilo1-1,ihi1+1
           ssm = s(i,j,k3d) - sm(i)
           ssp = sp(i) - s(i,j,k3d)
@@ -444,7 +436,7 @@ contains
        ! flatten the parabola AFTER doing the monotonization --
        ! this is the method that Miller & Colella do
        if (ppm_flatten_before_integrals == 2) then
-          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          !DIR$ SIMD
           do i=ilo1-1,ihi1+1
              sm(i) = flatn(i,j,k3d)*sm(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
              sp(i) = flatn(i,j,k3d)*sp(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
@@ -452,8 +444,7 @@ contains
        endif
 
        ! compute z-component of Ip and Im
-       !DIR$ SIMD &
-       !DIR$ private(s6,sigma)
+       !DIR$ SIMD private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
 
