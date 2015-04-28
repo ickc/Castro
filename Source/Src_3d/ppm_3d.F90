@@ -95,20 +95,21 @@ contains
     integer i,j
 
     double precision dsl, dsr, dsc, dtdx, dtdy, dtdz
-    double precision sigma, s6, dsvlm, dsvlp, dsvlz, sp, sm
+    double precision sigma, s6, dsvlm, dsvlp, dsvlz, sp, sm, ssp, ssm
+
+    ! s_{\ib,+}, s_{\ib,-}
+    double precision :: spx(ilo1-1:ihi1+1)
+    double precision :: smx(ilo1-1:ihi1+1)
 
     ! \delta s_{\ib}^{vL}
-    double precision, allocatable :: dsvlx(:)
+    double precision :: dsvlx(ilo1-2:ihi1+2)
     double precision, allocatable :: dsvly(:,:)
 
     ! s_{i+\half}^{H.O.}
-    double precision, allocatable :: sedgex(:)
+    double precision :: sedgex(ilo1-1:ihi1+2)
     double precision, allocatable :: sedgey(:,:)
 
-    allocate(dsvlx (ilo1-2:ihi1+2))
     allocate(dsvly (ilo1-1:ihi1+1, ilo2-2:ihi2+2))
-    
-    allocate(sedgex(ilo1-1:ihi1+2))
     allocate(sedgey(ilo1-1:ihi1+1, ilo2-1:ihi2+2))
 
     if (ppm_type .ne. 1) &
@@ -159,47 +160,51 @@ contains
           sedgex(i) = min(sedgex(i),max(s(i,j,k3d),s(i-1,j,k3d)))
        end do
 
+       ! flatten the parabola BEFORE doing the other                     
+       ! monotonization -- this is the method that Flash does       
+       if (ppm_flatten_before_integrals == 1) then
+          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          do i=ilo1-1,ihi1+2
+             sedgex(i) = flatn(i,j,k3d)*sedgex(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+          end do
+       end if
+
+       ! modify using quadratic limiters -- note this version of the limiting comes
+       ! from Colella and Sekora (2008), not the original PPM paper.
        !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
-       !DIR$ private(sp,sm,s6,sigma)
+       !DIR$ private(ssm,ssp)
        do i=ilo1-1,ihi1+1
+          ssm = s(i,j,k3d) - sedgex(i)
+          ssp = sedgex(i+1) - s(i,j,k3d)
 
-          ! copy sedge into sp and sm
-          sp = sedgex(i+1)
-          sm = sedgex(i  )
+          spx(i) = sedgex(i+1)
+          smx(i) = sedgex(i)
 
-          if (ppm_flatten_before_integrals == 1) then
-             ! flatten the parabola BEFORE doing the other                     
-             ! monotonization -- this is the method that Flash does       
-             sm = flatn(i,j,k3d)*sm + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-             sp = flatn(i,j,k3d)*sp + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-          endif
-
-          ! modify using quadratic limiters -- note this version of the limiting comes
-          ! from Colella and Sekora (2008), not the original PPM paper.
-          if ((sp-s(i,j,k3d))*(s(i,j,k3d)-sm) .le. ZERO) then
-             sp = s(i,j,k3d)
-             sm = s(i,j,k3d)
-
-          else if (abs(sp-s(i,j,k3d)) .ge. TWO*abs(sm-s(i,j,k3d))) then
-          !else if (-(sp-sm)**2/SIX > &
-          !     (sp - sm)*(s(i,j,k3d) - HALF*(sm + sp))) then
-             sp = THREE*s(i,j,k3d) - TWO*sm
-
-          else if (abs(sm-s(i,j,k3d)) .ge. TWO*abs(sp-s(i,j,k3d))) then
-          !else if ((sp-sm)*(s(i,j,k3d) - HALF*(sm + sp)) > &
-          !     (sp - sm)**2/SIX) then
-             sm = THREE*s(i,j,k3d) - TWO*sp
+          if (ssm*ssp .le. ZERO) then
+             spx(i) = s(i,j,k3d)
+             smx(i) = s(i,j,k3d)
+          else if (abs(ssp) .ge. TWO*abs(ssm)) then
+             spx(i) = THREE*s(i,j,k3d) - TWO*smx(i)
+          else if (abs(ssm) .ge. TWO*abs(ssp)) then
+             smx(i) = THREE*s(i,j,k3d) - TWO*spx(i)
           end if
+       end do
 
-          if (ppm_flatten_before_integrals == 2) then
-             ! flatten the parabola AFTER doing the monotonization --
-             ! this is the method that Miller & Colella do
-             sm = flatn(i,j,k3d)*sm + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-             sp = flatn(i,j,k3d)*sp + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
-          endif
+       ! flatten the parabola AFTER doing the monotonization --
+       ! this is the method that Miller & Colella do
+       if (ppm_flatten_before_integrals == 2) then
+          !DIR$ SIMD vectorlength(BL_SIMD_LEN)
+          do i=ilo1-1,ihi1+1
+             smx(i) = flatn(i,j,k3d)*smx(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+             spx(i) = flatn(i,j,k3d)*spx(i) + (ONE-flatn(i,j,k3d))*s(i,j,k3d)
+          end do
+       endif
 
+       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
+       !DIR$ private(s6,sigma)
+       do i=ilo1-1,ihi1+1
           ! compute x-component of Ip and Im
-          s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
+          s6 = SIX*s(i,j,k3d) - THREE*(sm+spx(i))
 
           ! Ip/m is the integral under the parabola for the extent
           ! that a wave can travel over a timestep
@@ -210,42 +215,41 @@ contains
           ! u-c wave
           sigma = (u(i,j,k3d,1) - cspd(i,j,k3d))*dtdx
           if (sigma < ZERO) then
-             Ip(i,j,kc,1,1) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,1,1) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,1) = sp
+             Ip(i,j,kc,1,1) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,1,1) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,1,1) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,1,1) = sm              
+             Im(i,j,kc,1,1) = smx(i)              
           end if
 
           ! u wave             
           sigma = u(i,j,k3d,1)*dtdx
           if (sigma < ZERO) then
-             Ip(i,j,kc,1,2) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,1,2) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,2) = sp
+             Ip(i,j,kc,1,2) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,1,2) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,1,2) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,1,2) = sm              
+             Im(i,j,kc,1,2) = smx(i)              
           end if
 
           ! u+c wave
           sigma = (u(i,j,k3d,1) + cspd(i,j,k3d))*dtdx
           if (sigma < ZERO) then
-             Ip(i,j,kc,1,3) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+             Ip(i,j,kc,1,3) = spx(i) + HALF*sigma*(spx(i)-smx(i)-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,3) = sp
+             Ip(i,j,kc,1,3) = spx(i)
           end if
           if (sigma > ZERO) then
-             Im(i,j,kc,1,3) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+             Im(i,j,kc,1,3) = smx(i) + HALF*sigma*(spx(i)-smx(i)+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,1,3) = sm 
+             Im(i,j,kc,1,3) = smx(i) 
           end if
-
        end do
     end do
 
@@ -478,7 +482,7 @@ contains
        end do
     end do
 
-    deallocate(dsvlx,dsvly,sedgex,sedgey)
+    deallocate(dsvly,sedgey)
 
   end subroutine ppm_type1
 
