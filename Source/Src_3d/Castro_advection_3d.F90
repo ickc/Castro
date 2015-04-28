@@ -1,6 +1,6 @@
 module advection_module
 
-  use align_array_module, only : alignbyte, align_padding
+  use align_array_module, only : align_padding
 
   implicit none
   
@@ -149,12 +149,12 @@ contains
     integer :: iloalg, ihialg
 
 #if defined(BL_ALIGN_BYTE)
-!dir$ attributes align : alignbyte :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
-!dir$ attributes align : alignbyte :: qmyz,qpyz,qmzx,qpzx,qmzy,qpzy,qxl,qxr,qyl,qyr,qzl,qzr,fx,fy,fz
-!dir$ attributes align : alignbyte :: fxy,fxz,fyx,fyz,fzx,fzy,flxtmp,pgdnvx,ugdnvx,gegdnvx,pgdnvxf,ugdnvxf,gegdnvxf
-!dir$ attributes align : alignbyte :: pgdnvtmpx,ugdnvtmpx,gegdnvtmpx,pgdnvy,ugdnvy,gegdnvy,pgdnvyf,ugdnvyf,gegdnvyf
-!dir$ attributes align : alignbyte :: pgdnvtmpy,ugdnvtmpy,gegdnvtmpy,pgdnvz,ugdnvz,gegdnvz,pgdnvzf,ugdnvzf,gegdnvzf
-!dir$ attributes align : alignbyte :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
+!dir$ attributes align : BL_ALIGN_BYTE :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
+!dir$ attributes align : BL_ALIGN_BYTE :: qmyz,qpyz,qmzx,qpzx,qmzy,qpzy,qxl,qxr,qyl,qyr,qzl,qzr,fx,fy,fz
+!dir$ attributes align : BL_ALIGN_BYTE :: fxy,fxz,fyx,fyz,fzx,fzy,flxtmp,pgdnvx,ugdnvx,gegdnvx,pgdnvxf,ugdnvxf,gegdnvxf
+!dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpx,ugdnvtmpx,gegdnvtmpx,pgdnvy,ugdnvy,gegdnvy,pgdnvyf,ugdnvyf,gegdnvyf
+!dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpy,ugdnvtmpy,gegdnvtmpy,pgdnvz,ugdnvz,gegdnvz,pgdnvzf,ugdnvzf,gegdnvzf
+!dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
 #endif
 
     ! Index before padding: ilo1-1:ihi1+2

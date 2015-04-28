@@ -1,6 +1,6 @@
 module riemann_module
 
-  use align_array_module, only : alignbyte, align_next_index
+  use align_array_module, only : align_next_index
   use bl_constants_module
 
   implicit none
@@ -70,7 +70,7 @@ contains
     type (eos_t) :: eos_state
 
 #if defined(BL_ALIGN_BYTE)
-!dir$ attributes align : alignbyte :: smallc,cavg,gamcm,gamcp
+!dir$ attributes align : BL_ALIGN_BYTE :: smallc,cavg,gamcm,gamcp
 #endif
 
     allocate ( smallc(qpd_l1:qpd_h1,jlo:jhi) )
@@ -977,7 +977,7 @@ contains
     integer :: ilo_align
 
 #if defined(BL_ALIGN_BYTE)
-!dir$ attributes align : alignbyte :: us1d, rgd1d, zerov_xfac
+!dir$ attributes align : BL_ALIGN_BYTE :: us1d, rgd1d, zerov_xfac
 #endif
 
     ! Given that (qpd_l1,...) is aligned, what's the first index after ilo that is aligned?
