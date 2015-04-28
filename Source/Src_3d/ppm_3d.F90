@@ -96,7 +96,6 @@ contains
 
     double precision dsl, dsr, dsc, dtdx, dtdy, dtdz
     double precision sigma, s6, dsvlm, dsvlp, dsvlz, sp, sm
-!    double precision dsm2, dsm1, ds00, dsp1, dsp2
 
     ! \delta s_{\ib}^{vL}
     double precision, allocatable :: dsvlx(:)
@@ -230,55 +229,43 @@ contains
           ! Im integrates to the left edge of a cell
 
           ! u-c wave
-          sigma = abs(u(i,j,k3d,1)-cspd(i,j,k3d))*dtdx
-
-          if (u(i,j,k3d,1)-cspd(i,j,k3d) <= ZERO) then
+          sigma = (u(i,j,k3d,1) - cspd(i,j,k3d))*dtdx
+          if (sigma < ZERO) then
+             Ip(i,j,kc,1,1) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+          else
              Ip(i,j,kc,1,1) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,1,1) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,1) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
+             Im(i,j,kc,1,1) = sm              
+          end if
 
-          if (u(i,j,k3d,1)-cspd(i,j,k3d) >= ZERO) then
-             Im(i,j,kc,1,1) = sm 
+          ! u wave             
+          sigma = u(i,j,k3d,1)*dtdx
+          if (sigma < ZERO) then
+             Ip(i,j,kc,1,2) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,1,1) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          ! u wave
-          sigma = abs(u(i,j,k3d,1))*dtdx
-
-          if (u(i,j,k3d,1) <= ZERO) then
-             Ip(i,j,kc,1,2) = sp 
+             Ip(i,j,kc,1,2) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,1,2) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,2) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-             
-          if (u(i,j,k3d,1) >= ZERO) then
-             Im(i,j,kc,1,2) = sm 
-          else
-             Im(i,j,kc,1,2) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+             Im(i,j,kc,1,2) = sm              
+          end if
 
           ! u+c wave
-          sigma = abs(u(i,j,k3d,1)+cspd(i,j,k3d))*dtdx
-
-          if (u(i,j,k3d,1)+cspd(i,j,k3d) <= ZERO) then
-             Ip(i,j,kc,1,3) = sp 
+          sigma = (u(i,j,k3d,1) + cspd(i,j,k3d))*dtdx
+          if (sigma < ZERO) then
+             Ip(i,j,kc,1,3) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,1,3) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,1)+cspd(i,j,k3d) >= ZERO) then
+             Ip(i,j,kc,1,3) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,1,3) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+          else
              Im(i,j,kc,1,3) = sm 
-          else
-             Im(i,j,kc,1,3) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+          end if
 
        end do
     end do
@@ -377,55 +364,43 @@ contains
           s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
 
           ! v-c wave
-          sigma = abs(u(i,j,k3d,2)-cspd(i,j,k3d))*dtdy
-
-          if (u(i,j,k3d,2)-cspd(i,j,k3d) <= ZERO) then
+          sigma = (u(i,j,k3d,2) - cspd(i,j,k3d))*dtdy
+          if (sigma < ZERO) then
+             Ip(i,j,kc,2,1) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
+          else
              Ip(i,j,kc,2,1) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,2,1) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,1) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,2)-cspd(i,j,k3d) >= ZERO) then
              Im(i,j,kc,2,1) = sm 
-          else
-             Im(i,j,kc,2,1) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+          end if
 
-          ! v wave
-          sigma = abs(u(i,j,k3d,2))*dtdy
-
-          if (u(i,j,k3d,2) <= ZERO) then
-             Ip(i,j,kc,2,2) = sp 
+          ! v wave          
+          sigma =u(i,j,k3d,2)*dtdy
+          if (sigma < ZERO) then
+             Ip(i,j,kc,2,2) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,2) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,2) >= ZERO) then
-             Im(i,j,kc,2,2) = sm 
+             Ip(i,j,kc,2,2) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,2,2) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,2,2) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+             Im(i,j,kc,2,2) = sm              
+          end if
 
           ! v+c wave
-          sigma = abs(u(i,j,k3d,2)+cspd(i,j,k3d))*dtdy
-
-          if (u(i,j,k3d,2)+cspd(i,j,k3d) <= ZERO) then
-             Ip(i,j,kc,2,3) = sp 
+          sigma = (u(i,j,k3d,2) + cspd(i,j,k3d))*dtdy
+          if (sigma < ZERO) then
+             Ip(i,j,kc,2,3) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,2,3) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,2)+cspd(i,j,k3d) >= ZERO) then
+             Ip(i,j,kc,2,3) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,2,3) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+          else
              Im(i,j,kc,2,3) = sm 
-          else
-             Im(i,j,kc,2,3) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+          end if
 
        end do
     end do
@@ -511,55 +486,43 @@ contains
           s6 = SIX*s(i,j,k3d) - THREE*(sm+sp)
 
           ! w-c wave
-          sigma = abs(u(i,j,k3d,3)-cspd(i,j,k3d))*dtdz
-
-          if (u(i,j,k3d,3)-cspd(i,j,k3d) <= ZERO) then
-             Ip(i,j,kc,3,1) = sp 
+          sigma = (u(i,j,k3d,3) - cspd(i,j,k3d))*dtdz
+          if (sigma < ZERO) then
+             Ip(i,j,kc,3,1) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,3,1) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,3)-cspd(i,j,k3d) >= ZERO) then
+             Ip(i,j,kc,3,1) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,3,1) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+          else
              Im(i,j,kc,3,1) = sm 
+          end if
+
+          ! w wave          
+          sigma = u(i,j,k3d,3)*dtdz
+          if (sigma < ZERO) then
+             Ip(i,j,kc,3,2) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Im(i,j,kc,3,1) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          ! w wave
-          sigma = abs(u(i,j,k3d,3))*dtdz
-
-          if (u(i,j,k3d,3) <= ZERO) then
-             Ip(i,j,kc,3,2) = sp 
+             Ip(i,j,kc,3,2) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,3,2) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,3,2) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,3) >= ZERO) then
              Im(i,j,kc,3,2) = sm 
-          else
-             Im(i,j,kc,3,2) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+          end if
 
           ! w+c wave
-          sigma = abs(u(i,j,k3d,3)+cspd(i,j,k3d))*dtdz
-
-          if (u(i,j,k3d,3)+cspd(i,j,k3d) <= ZERO) then
-             Ip(i,j,kc,3,3) = sp 
+          sigma = (u(i,j,k3d,3) + cspd(i,j,k3d))*dtdz
+          if (sigma < ZERO) then
+             Ip(i,j,kc,3,3) = sp + HALF*sigma*(sp-sm-(ONE+TWO3RD*sigma)*s6)
           else
-             Ip(i,j,kc,3,3) = sp - &
-               HALF*sigma*(sp-sm-(ONE-TWO3RD*sigma)*s6)
-          endif
-
-          if (u(i,j,k3d,3)+cspd(i,j,k3d) >= ZERO) then
+             Ip(i,j,kc,3,3) = sp
+          end if
+          if (sigma > ZERO) then
+             Im(i,j,kc,3,3) = sm + HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
+          else
              Im(i,j,kc,3,3) = sm 
-          else
-             Im(i,j,kc,3,3) = sm + &
-               HALF*sigma*(sp-sm+(ONE-TWO3RD*sigma)*s6)
-          endif
+          end if
 
        end do
     end do
