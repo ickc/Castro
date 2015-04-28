@@ -202,7 +202,7 @@ contains
 
        ! compute x-component of Ip and Im
 
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
+       !DIR$ SIMD &
        !DIR$ private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
@@ -328,7 +328,7 @@ contains
 
        ! compute y-component of Ip and Im
 
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
+       !DIR$ SIMD &
        !DIR$ private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
@@ -452,7 +452,7 @@ contains
        endif
 
        ! compute z-component of Ip and Im
-       !DIR$ SIMD vectorlength(BL_SIMD_LEN) &
+       !DIR$ SIMD &
        !DIR$ private(s6,sigma)
        do i=ilo1-1,ihi1+1
           s6 = SIX*s(i,j,k3d) - THREE*(sm(i)+sp(i))
