@@ -9,7 +9,7 @@ module trace_ppm_module
 contains
 
   subroutine tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                         Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc,I_l1,I_h1, &
                          qxm,qxp,qym,qyp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
                          gamc,gc_l1,gc_l2,gc_l3,gc_h1,gc_h2,gc_h3, &
                          ilo1,ilo2,ihi1,ihi2,dt,kc,k3d)
@@ -31,6 +31,7 @@ contains
     integer qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
     integer qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3
     integer gc_l1,gc_l2,gc_l3,gc_h1,gc_h2,gc_h3
+    integer I_l1, I_h1
     integer ilo1,ilo2,ihi1,ihi2
     integer kc,k3d
 
@@ -38,17 +39,17 @@ contains
     double precision     c(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
 
-    double precision   Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
-    double precision   Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
+    double precision   Ip(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
+    double precision   Im(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
 
-    double precision   Ip_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
-    double precision   Im_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Ip_g(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Im_g(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
 
-    double precision   Ip_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
-    double precision   Im_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Ip_r(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Im_r(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
 
-    double precision   Ip_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
-    double precision   Im_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
+    double precision   Ip_gc(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
+    double precision   Im_gc(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
 
     double precision qxm(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
     double precision qxp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
@@ -1226,7 +1227,7 @@ contains
   end subroutine tracexy_ppm
 
   subroutine tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                        Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                        Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc,I_l1,I_h1, &
                         qzm,qzp,qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3, &
                         gamc,gc_l1,gc_l2,gc_l3,gc_h1,gc_h2,gc_h3, &
                         ilo1,ilo2,ihi1,ihi2,dt,km,kc,k3d)
@@ -1248,6 +1249,7 @@ contains
     integer qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
     integer qpd_l1,qpd_l2,qpd_l3,qpd_h1,qpd_h2,qpd_h3
     integer gc_l1,gc_l2,gc_l3,gc_h1,gc_h2,gc_h3
+    integer I_l1,I_h1
     integer ilo1,ilo2,ihi1,ihi2
     integer km,kc,k3d
 
@@ -1255,17 +1257,17 @@ contains
     double precision     c(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
 
-    double precision   Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
-    double precision   Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
+    double precision   Ip(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
+    double precision   Im(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,QVAR)
 
-    double precision   Ip_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
-    double precision   Im_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Ip_g(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Im_g(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
 
-    double precision   Ip_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
-    double precision   Im_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Ip_r(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
+    double precision   Im_r(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,3)
 
-    double precision   Ip_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
-    double precision   Im_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
+    double precision   Ip_gc(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
+    double precision   Im_gc(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3,1)
 
     double precision qzm(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)
     double precision qzp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,qpd_l3:qpd_h3,QVAR)

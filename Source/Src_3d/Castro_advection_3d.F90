@@ -147,6 +147,7 @@ contains
     type (eos_t) :: eos_state
 
     integer :: iloalg, ihialg
+    integer :: iloI, ihiI
 
 #if defined(BL_ALIGN_BYTE)
 !dir$ attributes align : BL_ALIGN_BYTE :: dqx,dqy,dqz,qxm,qym,qzm,qxp,qyp,qzp,qmxy,qpxy,qmxz,qpxz,qmyx,qpyx
@@ -155,10 +156,11 @@ contains
 !dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpx,ugdnvtmpx,gegdnvtmpx,pgdnvy,ugdnvy,gegdnvy,pgdnvyf,ugdnvyf,gegdnvyf
 !dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpy,ugdnvtmpy,gegdnvtmpy,pgdnvz,ugdnvz,gegdnvz,pgdnvzf,ugdnvzf,gegdnvzf
 !dir$ attributes align : BL_ALIGN_BYTE :: pgdnvtmpz1,ugdnvtmpz1,gegdnvtmpz1,pgdnvtmpz2,ugdnvtmpz2,gegdnvtmpz2
+!dir$ attributes align : BL_ALIGN_BYTE :: Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc
 #endif
 
     ! Index before padding: ilo1-1:ihi1+2
-    ! Index after  padinng: iloalg:ihialg
+    ! Index after  padding: iloalg:ihialg
     ! Array elements at (ilo1,...) are targeted for alignment, 
     ! because ilo1 is the starting index for many loops
     call align_padding(ilo1, ilo1-1, ihi1+2, iloalg, ihialg)
@@ -256,21 +258,27 @@ contains
 
     allocate ( flxtmp(iloalg:ihialg,ilo2:ihi2+1,1,NVAR))
 
+    ! Index before padding: ilo1-1:ihi1+2
+    ! Index after  padding: iloI:ihiI
+    ! Array elements at (ilo1,...) are targeted for alignment, 
+    ! because ilo1-1 is the starting index for many loops
+    call align_padding(ilo1-1, ilo1-1, ihi1+1, iloI, ihiI)
+
     ! x-index, y-index, z-index, dim, characteristics, variables
-    allocate ( Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,QVAR))
-    allocate ( Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,QVAR))
+    allocate ( Ip(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,QVAR))
+    allocate ( Im(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,QVAR))
     
     ! for gravity (last index is x,y,z component)
-    allocate ( Ip_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
-    allocate ( Im_g(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
+    allocate ( Ip_g(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,3))
+    allocate ( Im_g(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,3))
 
     ! for rotation (last index is x,y,z component)
-    allocate ( Ip_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
-    allocate ( Im_r(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,3))
+    allocate ( Ip_r(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,3))
+    allocate ( Im_r(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,3))
 
     ! for gamc -- needed for the reference state in eigenvectors
-    allocate ( Ip_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,1))
-    allocate ( Im_gc(ilo1-1:ihi1+1,ilo2-1:ihi2+1,2,3,3,1))
+    allocate ( Ip_gc(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,1))
+    allocate ( Im_gc(iloI:ihiI,ilo2-1:ihi2+1,2,3,3,1))
 
     ! for the hybrid Riemann solver
     allocate(shk(ilo1-1:ihi1+1,ilo2-1:ihi2+1,ilo3-1:ihi3+1))
@@ -333,7 +341,7 @@ contains
              call ppm(q(:,:,:,n  ),  qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                      Ip(:,:,:,:,:,n),Im(:,:,:,:,:,n), &
+                      Ip(:,:,:,:,:,n),Im(:,:,:,:,:,n),iloI,ihiI, &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
           end do
 
@@ -342,7 +350,7 @@ contains
                 call ppm(grav(:,:,:,n),gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
                          q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         Ip_g(:,:,:,:,:,n),Im_g(:,:,:,:,:,n), &
+                         Ip_g(:,:,:,:,:,n),Im_g(:,:,:,:,:,n),iloI,ihiI, &
                          ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
              enddo
           endif
@@ -352,7 +360,7 @@ contains
                 call ppm(rot(:,:,:,n),rt_l1,rt_l2,rt_l3,rt_h1,rt_h2,rt_h3, &
                          q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         Ip_r(:,:,:,:,:,n),Im_r(:,:,:,:,:,n), &
+                         Ip_r(:,:,:,:,:,n),Im_r(:,:,:,:,:,n),iloI,ihiI, &
                          ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
              enddo
           endif
@@ -362,16 +370,16 @@ contains
              call ppm(gamc(:,:,:),qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                      Ip_gc(:,:,:,:,:,1),Im_gc(:,:,:,:,:,1), &
+                      Ip_gc(:,:,:,:,:,1),Im_gc(:,:,:,:,:,1),iloI,ihiI, &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
           endif
           
           ! temperature-based PPM
           if (ppm_temp_fix == 1) then
-             do j = ilo2-1, ihi2+1
-                do i = ilo1-1, ihi1+1
-                   do idim = 1, 3
-                      do iwave = 1, 3
+             do iwave = 1, 3
+                do idim = 1, 3
+                   do j = ilo2-1, ihi2+1
+                      do i = ilo1-1, ihi1+1
                          eos_state % rho = Ip(i,j,kc,idim,iwave,QRHO)
                          eos_state % T   = Ip(i,j,kc,idim,iwave,QTEMP)
                          eos_state % xn  = Ip(i,j,kc,idim,iwave,QFS:QFS-1+nspec)
@@ -404,7 +412,7 @@ contains
 
           ! Compute U_x and U_y at kc (k3d)
           call tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                           Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                           Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc,iloI,ihiI, &
                            qxm,qxp,qym,qyp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                            gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            ilo1,ilo2,ihi1,ihi2,dt,kc,k3d)
@@ -483,7 +491,7 @@ contains
           ! Compute U_z at kc (k3d)
           if (ppm_type .gt. 0) then
              call tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                             Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                             Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc,iloI,ihiI, &
                              qzm,qzp,iloalg,ilo2-1,1,ihialg,ihi2+2,2, &
                              gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              ilo1,ilo2,ihi1,ihi2,dt,km,kc,k3d)

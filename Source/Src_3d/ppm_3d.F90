@@ -1,5 +1,7 @@
 module ppm_module
 
+  use align_array_module, only : align_padding
+
   implicit none
 
   private
@@ -13,7 +15,7 @@ contains
   subroutine ppm(s,s_l1,s_l2,s_l3,s_h1,s_h2,s_h3, &
                  u,cspd,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                  flatn,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                 Ip,Im, &
+                 Ip,Im,I_l1,I_h1, &
                  ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc, &
                  force_type_in)
 
@@ -24,14 +26,15 @@ contains
     integer           s_l1, s_l2, s_l3, s_h1, s_h2, s_h3
     integer          qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
     integer           f_l1, f_l2, f_l3, f_h1, f_h2, f_h3
+    integer           I_l1, I_h1
     integer          ilo1,ilo2,ihi1,ihi2
 
     double precision     s( s_l1: s_h1, s_l2: s_h2, s_l3: s_h3)
     double precision     u(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3,3)
     double precision  cspd(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn( f_l1: f_h1, f_l2: f_h2, f_l3: f_h3)
-    double precision Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
-    double precision Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Ip(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Im(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
 
     double precision dx,dy,dz,dt
     integer          k3d,kc
@@ -48,14 +51,16 @@ contains
         call ppm_type1(s,s_l1,s_l2,s_l3,s_h1,s_h2,s_h3, &
                        u,cspd,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        flatn,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                       Ip,Im,ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
+                       Ip,Im,I_l1,I_h1, &
+                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
 
     else if (ppm_type_to_use == 2) then
 
         call ppm_type2(s,s_l1,s_l2,s_l3,s_h1,s_h2,s_h3, &
                        u,cspd,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        flatn,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                       Ip,Im,ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
+                       Ip,Im,I_l1,I_h1, &
+                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
 
     end if
 
@@ -68,7 +73,8 @@ contains
   subroutine ppm_type1(s,s_l1,s_l2,s_l3,s_h1,s_h2,s_h3, &
                        u,cspd,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        flatn,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                       Ip,Im,ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
+                       Ip,Im,I_l1,I_h1, &
+                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
 
     use meth_params_module, only : ppm_type, ppm_flatten_before_integrals
     use bl_constants_module
@@ -78,6 +84,7 @@ contains
     integer           s_l1, s_l2, s_l3, s_h1, s_h2, s_h3
     integer          qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
     integer           f_l1, f_l2, f_l3, f_h1, f_h2, f_h3
+    integer          I_l1, I_h1
     integer          ilo1,ilo2,ihi1,ihi2
 
     double precision     s( s_l1: s_h1, s_l2: s_h2, s_l3: s_h3)
@@ -85,14 +92,14 @@ contains
     double precision  cspd(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn( f_l1: f_h1, f_l2: f_h2, f_l3: f_h3)
 
-    double precision Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
-    double precision Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Ip(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Im(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
 
     double precision dx,dy,dz,dt
     integer          k3d,kc
 
     ! local
-    integer i,j
+    integer i,j, iloalg, ihialg
 
     double precision dsl, dsr, dsc, dtdx, dtdy, dtdz
     double precision sigma, s6, dsvlm, dsvlp, dsvlz, ssp, ssm
@@ -109,8 +116,18 @@ contains
     double precision :: sedgex(ilo1-1:ihi1+2)
     double precision, allocatable :: sedgey(:,:)
 
-    allocate(dsvly (ilo1-1:ihi1+1, ilo2-2:ihi2+2))
-    allocate(sedgey(ilo1-1:ihi1+1, ilo2-1:ihi2+2))
+#if defined(BL_ALIGN_BYTE)
+!dir$ attributes align : BL_ALIGN_BYTE :: sp,sm,dsvlx,dsvly,sedgex,sedgey
+#endif
+
+    ! Index before padding: ilo1-1:ihi1+1
+    ! Index after  padding: iloalg:ihialg
+    ! Array elements at (ilo1-1,...) are targeted for alignment, 
+    ! because ilo11 is the starting index of loops
+    call align_padding(ilo1-1, ilo1-1, ihi1+1, iloalg, ihialg)
+
+    allocate(dsvly (iloalg:ihialg, ilo2-2:ihi2+2))
+    allocate(sedgey(iloalg:ihialg, ilo2-1:ihi2+2))
 
     if (ppm_type .ne. 1) &
          call bl_error("Should have ppm_type = 1 in ppm_type1")
@@ -500,7 +517,8 @@ contains
   subroutine ppm_type2(s,s_l1,s_l2,s_l3,s_h1,s_h2,s_h3, &
                        u,cspd,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                        flatn,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                       Ip,Im,ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
+                       Ip,Im,I_l1,I_h1, &
+                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
 
     use meth_params_module, only : ppm_type, ppm_flatten_before_integrals
     use bl_constants_module
@@ -510,13 +528,14 @@ contains
     integer           s_l1, s_l2, s_l3, s_h1, s_h2, s_h3
     integer          qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3
     integer           f_l1, f_l2, f_l3, f_h1, f_h2, f_h3
+    integer          I_l1, I_h1
     integer          ilo1,ilo2,ihi1,ihi2
     double precision s( s_l1: s_h1, s_l2: s_h2, s_l3: s_h3)
     double precision u(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3,1:3)
     double precision cspd(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn(f_l1:f_h1,f_l2:f_h2,f_l3:f_h3)
-    double precision Ip(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
-    double precision Im(ilo1-1:ihi1+1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Ip(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
+    double precision Im(I_l1:I_h1,ilo2-1:ihi2+1,1:2,1:3,1:3)
     double precision dx,dy,dz,dt
     integer          k3d,kc
 
