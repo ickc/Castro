@@ -43,6 +43,7 @@ module meth_params_module
   integer         , save :: ppm_reference_edge_limit
   integer         , save :: ppm_flatten_before_integrals
   integer         , save :: ppm_reference_eigenvectors
+  integer         , save :: invariant_hydro
   integer         , save :: hybrid_riemann
   integer         , save :: use_colglaz
   integer         , save :: use_flattening

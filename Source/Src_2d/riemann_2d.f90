@@ -16,6 +16,7 @@ contains
 
   subroutine cmpflx(qm,qp,qpd_l1,qpd_l2,qpd_h1,qpd_h2, &
                     flx,flx_l1,flx_l2,flx_h1,flx_h2, &
+                    vf,vf_l1,vf_l2,vf_h1,vf_h2,&
                     pgd,pgd_l1,pgd_l2,pgd_h1,pgd_h2, &
                     ugd,ugd_l1,ugd_l2,ugd_h1,ugd_h2, &
                     gegd,ggd_l1,ggd_l2,ggd_h1,ggd_h2, &
@@ -34,6 +35,7 @@ contains
 
     integer, intent(in) :: qpd_l1,qpd_l2,qpd_h1,qpd_h2
     integer, intent(in) :: flx_l1,flx_l2,flx_h1,flx_h2
+    integer, intent(in) :: vf_l1,vf_l2,vf_h1,vf_h2
     integer, intent(in) :: pgd_l1,pgd_l2,pgd_h1,pgd_h2
     integer, intent(in) :: ugd_l1,ugd_l2,ugd_h1,ugd_h2
     integer, intent(in) :: ggd_l1,ggd_l2,ggd_h1,ggd_h2
@@ -45,6 +47,7 @@ contains
     double precision, intent(inout) ::  qm(qpd_l1:qpd_h1,qpd_l2:qpd_h2,QVAR)
     double precision, intent(inout) ::  qp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,QVAR)
     double precision, intent(inout) :: flx(flx_l1:flx_h1,flx_l2:flx_h2,NVAR)
+    double precision, intent(inout) ::  vf(vf_l1:vf_h1,vf_l2:vf_h2,2)
     double precision, intent(inout) :: pgd(pgd_l1:pgd_h1,pgd_l2:pgd_h2)
     double precision, intent(inout) :: ugd(ugd_l1:ugd_h1,ugd_l2:ugd_h2)
     double precision, intent(inout) ::gegd(ggd_l1:ggd_h1,ggd_l2:ggd_h2)
@@ -169,6 +172,7 @@ contains
        call riemannus(qm, qp, qpd_l1, qpd_l2, qpd_h1, qpd_h2, &
                       gamcm, gamcp, cavg, smallc, ilo-1, jlo-1, ihi+1, jhi+1, &
                       flx, flx_l1, flx_l2, flx_h1, flx_h2, &
+                      vf,  vf_l1,  vf_l2,  vf_h1,  vf_h2,  &
                       pgd, pgd_l1, pgd_l2, pgd_h1, pgd_h2, &
                       ugd, ugd_l1, ugd_l2, ugd_h1, ugd_h2, &
                       gegd, ggd_l1, ggd_l2, ggd_h1, ggd_h2, &
@@ -177,6 +181,7 @@ contains
        call riemanncg(qm, qp, qpd_l1, qpd_l2, qpd_h1, qpd_h2, &
                       gamcm, gamcp, cavg, smallc, ilo-1, jlo-1, ihi+1, jhi+1, &
                       flx, flx_l1, flx_l2, flx_h1, flx_h2, &
+                      vf,  vf_l1,  vf_l2,  vf_h1,  vf_h2,  &                      
                       pgd, pgd_l1, pgd_l2, pgd_h1, pgd_h2, &
                       ugd, ugd_l1, ugd_l2, ugd_h1, ugd_h2, &
                       gegd, ggd_l1, ggd_l2, ggd_h1, ggd_h2, &
@@ -325,6 +330,7 @@ contains
   subroutine riemanncg(ql,qr,qpd_l1,qpd_l2,qpd_h1,qpd_h2, &
                        gamcl,gamcr,cav,smallc,gd_l1,gd_l2,gd_h1,gd_h2, &
                        uflx,uflx_l1,uflx_l2,uflx_h1,uflx_h2, &
+                       vf,  vf_l1,  vf_l2,  vf_h1,  vf_h2,  &
                        pgdnv,pg_l1,pg_l2,pg_h1,pg_h2, &
                        ugdnv,ug_l1,ug_l2,ug_h1,ug_h2, &
                        gegdnv,gg_l1,gg_l2,gg_h1,gg_h2, &
@@ -350,6 +356,7 @@ contains
     integer :: qpd_l1,qpd_l2,qpd_h1,qpd_h2
     integer :: gd_l1,gd_l2,gd_h1,gd_h2
     integer :: uflx_l1,uflx_l2,uflx_h1,uflx_h2
+    integer :: vf_l1,vf_l2,vf_h1,vf_h2
     integer :: ug_l1,ug_l2,ug_h1,ug_h2
     integer :: pg_l1,pg_l2,pg_h1,pg_h2
     integer :: gg_l1,gg_l2,gg_h1,gg_h2
@@ -363,6 +370,7 @@ contains
     double precision ::    cav(gd_l1:gd_h1,gd_l2:gd_h2)
     double precision :: smallc(gd_l1:gd_h1,gd_l2:gd_h2)
     double precision :: uflx(uflx_l1:uflx_h1,uflx_l2:uflx_h2,NVAR)
+    double precision ::   vf(vf_l1:vf_h1,vf_l2:vf_h2,2)
     double precision :: ugdnv(ug_l1:ug_h1,ug_l2:ug_h2)
     double precision :: pgdnv(pg_l1:pg_h1,pg_l2:pg_h2)
     double precision :: gegdnv(gg_l1:gg_h1,gg_l2:gg_h2)
@@ -394,7 +402,7 @@ contains
 
     double precision :: pstnm1
     double precision :: taul, taur, tauo
-    double precision :: ustarm, ustarp, ustnm1, ustnp1
+   double precision :: ustarm, ustarp, ustnm1, ustnp1
 
     double precision, parameter :: weakwv = 1.d-3
 
@@ -734,6 +742,16 @@ contains
 
           pgdnv(i,j) = max(pgdnv(i,j),small_pres)
 
+          ! Add face velocities.
+
+          if (idir .eq. 1) then
+             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,1)
+             vgdnv = vgdnv + vf(i,j,2)
+          else
+             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,2)
+             vgdnv = vgdnv + vf(i,j,1)
+          endif          
+          
           ! Enforce that fluxes through a symmetry plane or wall are hard zero.
           if (idir .eq. 1) then
              if (i.eq.domlo(1) .and. &
@@ -853,6 +871,7 @@ contains
   subroutine riemannus(ql, qr, qpd_l1, qpd_l2, qpd_h1, qpd_h2, &
                        gamcl, gamcr, cav, smallc, gd_l1, gd_l2, gd_h1, gd_h2, &
                        uflx, uflx_l1, uflx_l2, uflx_h1, uflx_h2, &
+                       vf,  vf_l1,  vf_l2,  vf_h1,  vf_h2,  &
                        pgdnv, pgd_l1, pgd_l2, pgd_h1, pgd_h2, &
                        ugdnv, ugd_l1, ugd_l2, ugd_h1, ugd_h2, &
                        gegdnv, ggd_l1, ggd_l2, ggd_h1, ggd_h2, &
@@ -872,6 +891,7 @@ contains
     integer :: qpd_l1, qpd_l2, qpd_h1, qpd_h2
     integer :: gd_l1, gd_l2, gd_h1, gd_h2
     integer :: uflx_l1, uflx_l2, uflx_h1, uflx_h2
+    integer :: vf_l1, vf_l2, vf_h1, vf_h2
     integer :: pgd_l1, pgd_l2, pgd_h1, pgd_h2
     integer :: ugd_l1, ugd_l2, ugd_h1, ugd_h2
     integer :: ggd_l1, ggd_l2, ggd_h1, ggd_h2
@@ -885,6 +905,7 @@ contains
     double precision :: cav(gd_l1:gd_h1,gd_l2:gd_h2)
     double precision :: smallc(gd_l1:gd_h1,gd_l2:gd_h2)
     double precision :: uflx(uflx_l1:uflx_h1,uflx_l2:uflx_h2,NVAR)
+    double precision ::   vf(vf_l1:vf_h1,vf_l2:vf_h2,2)
     double precision :: pgdnv(pgd_l1:pgd_h1,pgd_l2:pgd_h2)
     double precision :: ugdnv(ugd_l1:ugd_h1,ugd_l2:ugd_h2)
     double precision :: gegdnv(ggd_l1:ggd_h1,ggd_l2:ggd_h2)
@@ -1034,6 +1055,15 @@ contains
 
           gegdnv(i,j) = pgdnv(i,j)/regd + 1.0d0
 
+          ! Add face velocities.
+
+          if (idir .eq. 1) then
+             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,1)
+             vgd        = vgd        + vf(i,j,2)
+          else
+             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,2)
+             vgd        = vgd        + vf(i,j,1)
+          endif          
 
           ! Enforce that fluxes through a symmetry plane or wall are hard zero.
           if (idir .eq. 1) then

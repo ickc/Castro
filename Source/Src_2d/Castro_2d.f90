@@ -70,7 +70,7 @@
       double precision xmom_added_sponge, ymom_added_sponge
       double precision mass_added,eint_added,eden_added
 
-!     Automatic arrays for workspace
+!     Allocatable arrays for workspace
       double precision, allocatable:: q(:,:,:)
       double precision, allocatable:: gamc(:,:)
       double precision, allocatable:: flatn(:,:)
@@ -82,6 +82,8 @@
       double precision, allocatable:: srcQ(:,:,:)
       double precision, allocatable:: pdivu(:,:)
       double precision, allocatable:: rot(:,:,:)
+      double precision, allocatable:: vf1(:,:,:)
+      double precision, allocatable:: vf2(:,:,:)
 
       integer ngq,ngf
 !     integer i_c,j_c
@@ -89,6 +91,8 @@
       double precision dx,dy
 
       integer q_l1, q_l2, q_h1, q_h2
+      integer vf1_l1, vf1_l2, vf1_h1, vf1_h2
+      integer vf2_l1, vf2_l2, vf2_h1, vf2_h2
 
       ngq = NHYP
       ngf = 1
@@ -113,6 +117,32 @@
 
       allocate(   rot(lo(1)-ngq:hi(1)+ngq,lo(2)-ngq:hi(2)+ngq,2))
 
+      vf1_l1 = lo(1)-2
+      vf1_l2 = lo(2)-2
+      vf1_h1 = hi(1)+2
+      vf1_h2 = hi(2)+2
+      
+      vf2_l1 = lo(1)-2
+      vf2_l2 = lo(2)-2
+      vf2_h1 = hi(1)+2
+      vf2_h2 = hi(2)+2
+
+!      vf1_l1 = lo(1)
+!      vf1_l2 = lo(2)
+!      vf1_h1 = hi(1)+1
+!      vf1_h2 = hi(2)
+
+!      vf2_l1 = lo(1)
+!      vf2_l2 = lo(2)
+!      vf2_h1 = hi(1)
+!      vf2_h2 = hi(2)+2      
+
+      allocate(   vf1(vf1_l1:vf1_h1,vf1_l2:vf1_h2,2)  )
+      allocate(   vf2(vf2_l1:vf2_h1,vf2_l2:vf2_h2,2)  )
+
+      vf1 = 0.d0
+      vf2 = 0.d0
+      
       dx = delta(1)
       dy = delta(2)
 
@@ -121,6 +151,8 @@
 !       and set to correspond to coordinates of (lo:hi)
       call ctoprim(lo,hi,uin,uin_l1,uin_l2,uin_h1,uin_h2, &
                    q,c,gamc,csml,flatn,q_l1,q_l2,q_h1,q_h2, &
+                   vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
+                   vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &
                    src,src_l1,src_l2,src_h1,src_h2, &
                    srcQ,lo(1)-1,lo(2)-1,hi(1)+1,hi(2)+1, &
                    courno,dx,dy,dt,ngq,ngf)
@@ -145,6 +177,8 @@
                    lo(1),lo(2),hi(1),hi(2),dx,dy,dt, &
                    flux1,flux1_l1,flux1_l2,flux1_h1,flux1_h2, &
                    flux2,flux2_l1,flux2_l2,flux2_h1,flux2_h2, &
+                   vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
+                   vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &
                    pgdx, lo(1), lo(2)-1, hi(1)+1, hi(2)+1, &
                    pgdy, lo(1)-1, lo(2), hi(1)+1, hi(2)+1, &
                    ugdx,ugdx_l1,ugdx_l2,ugdx_h1,ugdx_h2, &
@@ -211,7 +245,7 @@
                        dx,dy,domlo,domhi, &
                        E_added_sponge,xmom_added_sponge,ymom_added_sponge)
 
-      deallocate(q,gamc,flatn,c,csml,div,pgdx,pgdy,srcQ,pdivu,rot)
+      deallocate(q,gamc,flatn,c,csml,div,pgdx,pgdy,pdivu,srcQ,rot,vf1,vf2)
 
       end subroutine ca_umdrv
 

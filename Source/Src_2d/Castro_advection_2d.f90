@@ -37,6 +37,8 @@ contains
                      ilo1, ilo2, ihi1, ihi2, dx, dy, dt, &
                      flux1, fd1_l1, fd1_l2, fd1_h1, fd1_h2, &
                      flux2, fd2_l1, fd2_l2, fd2_h1, fd2_h2, &
+                     vf1, vf1_l1, vf1_l2, vf1_h1, vf1_h2, &
+                     vf2, vf2_l1, vf2_l2, vf2_h1, vf2_h2, &
                      pgdx, pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2, &
                      pgdy, pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2, &
                      ugdx,ugdx_l1,ugdx_l2,ugdx_h1,ugdx_h2, &
@@ -48,7 +50,7 @@ contains
                      domlo, domhi)
 
     use network, only : nspec, naux
-    use meth_params_module, only : QVAR, NVAR, ppm_type, hybrid_riemann
+    use meth_params_module, only : QVAR, NVAR, ppm_type, hybrid_riemann, URHO, UMX, UMY
     use trace_module, only : trace
     use trace_ppm_module, only : trace_ppm
     use transverse_module
@@ -64,6 +66,8 @@ contains
     integer rt_l1, rt_l2, rt_h1, rt_h2
     integer fd1_l1, fd1_l2, fd1_h1, fd1_h2
     integer fd2_l1, fd2_l2, fd2_h1, fd2_h2
+    integer vf1_l1, vf1_l2, vf1_h1, vf1_h2
+    integer vf2_l1, vf2_l2, vf2_h1, vf2_h2
     integer pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2
     integer pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2
     integer ugdx_l1,ugdx_l2,ugdx_h1,ugdx_h2
@@ -90,6 +94,8 @@ contains
     double precision ugdy(ugdy_l1:ugdy_h1,ugdy_l2:ugdy_h2)
     double precision flux1(fd1_l1:fd1_h1,fd1_l2:fd1_h2,NVAR)
     double precision flux2(fd2_l1:fd2_h1,fd2_l2:fd2_h2,NVAR)
+    double precision vf1(vf1_l1:vf1_h1,vf1_l2:vf1_h2,2)
+    double precision vf2(vf2_l1:vf2_h1,vf2_l2:vf2_h2,2)
     double precision area1(area1_l1:area1_h1,area1_l2:area1_h2)
     double precision area2(area2_l1:area2_h1,area2_l2:area2_h2)
     double precision pdivu(ilo1:ihi1,ilo2:ihi2)
@@ -102,6 +108,7 @@ contains
     
     ! Work arrays to hold riemann state and conservative fluxes
     double precision, allocatable ::  fx(:,:,:),  fy(:,:,:)
+    double precision, allocatable ::  vf1tmp(:,:,:),  vf2tmp(:,:,:)
     double precision, allocatable ::  pgdxtmp(:,:) ,  ugdxtmp(:,:)
     double precision, allocatable :: gegdxtmp(:,:), gegdx(:,:), gegdy(:,:)
     double precision, allocatable :: shk(:,:)
@@ -126,9 +133,14 @@ contains
     allocate (  fx(ilo1  :ihi1+1,ilo2-1:ihi2+1,NVAR))
     allocate (  fy(ilo1-1:ihi1+1,ilo2  :ihi2+1,NVAR))
 
+    allocate ( vf1tmp(vf1_l1:vf1_h1,vf1_l2:vf1_h2,2))
+    allocate ( vf2tmp(vf2_l2:vf2_h1,vf2_l2:vf2_h2,2))
+    
     allocate (shk(ilo1-1:ihi1+1,ilo2-1:ihi2+1))
 
-
+    vf1tmp = ZERO
+    vf2tmp = ZERO
+    
     ! Local constants
     dtdx = dt/dx
     hdtdx = HALF*dtdx
@@ -156,6 +168,8 @@ contains
        call trace(q,c,flatn,qd_l1,qd_l2,qd_h1,qd_h2, &
                   dloga,dloga_l1,dloga_l2,dloga_h1,dloga_h2, &
                   qxm,qxp,qym,qyp,ilo1-1,ilo2-1,ihi1+2,ihi2+2, &
+                  vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
+                  vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &                  
                   grav,gv_l1,gv_l2,gv_h1,gv_h2, &
                   ilo1,ilo2,ihi1,ihi2,dx,dy,dt)
     else
@@ -172,6 +186,7 @@ contains
     ! guesses for the x-interface states.  This produces the flux fx
     call cmpflx(qxm, qxp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 fx, ilo1, ilo2-1, ihi1+1, ihi2+1, &
+                vf1, vf1_l1, vf1_l2, vf1_h1, vf1_h2, &
                 pgdxtmp, pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2, &
                 ugdxtmp, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                 gegdxtmp, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &                
@@ -183,6 +198,7 @@ contains
     ! guesses for the y-interface states.  This produces the flux fy
     call cmpflx(qym, qyp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 fy, ilo1-1, ilo2, ihi1+1, ihi2+1, &
+                vf2, vf2_l1, vf2_l2, vf2_h1, vf2_h2, &         
                 pgdy, pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2, &
                 ugdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                 gegdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
@@ -195,6 +211,7 @@ contains
     ! states.  This results in the new x-interface states qm and qp
     call transy(qxm, qm, qxp, qp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 fy, ilo1-1, ilo2, ihi1+1, ihi2+1, &
+                vf2, vf2_l1, vf2_l2, vf2_h1, vf2_h2, &
                 pgdy, pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2, &
                 ugdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                 gegdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
@@ -204,24 +221,26 @@ contains
                 rot, rt_l1, rt_l2, rt_h1, rt_h2, &
                 hdt, hdtdy, &
                 ilo1-1, ihi1+1, ilo2, ihi2)
-    
+
     ! Solve the final Riemann problem across the x-interfaces with the
     ! full unsplit states.  The resulting flux through the x-interfaces
     ! is flux1
     call cmpflx(qm, qp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 flux1, fd1_l1, fd1_l2, fd1_h1, fd1_h2, &
+                vf1, vf1_l1, vf1_l2, vf1_h1, vf1_h2, &         
                 pgdx, pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2, &
                 ugdx, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                 gegdx, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                 gamc, csml, c, qd_l1, qd_l2, qd_h1, qd_h2, &
                 shk, ilo1-1, ilo2-1, ihi1+1, ihi2+1, &
                 1, ilo1, ihi1, ilo2, ihi2, domlo, domhi)
-      
+
     ! Correct the y-interface states (qym, qyp) by adding the
     ! transverse flux difference in the x-direction to the y-interface
     ! states.  This results in the new y-interface states qm and qp
     call transx(qym, qm, qyp, qp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 fx, ilo1, ilo2-1, ihi1+1, ihi2+1, &
+                vf1, vf1_l1, vf1_l2, vf1_h1, vf1_h2, &
                 pgdxtmp, pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2, &
                 ugdxtmp, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                 gegdxtmp, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
@@ -239,13 +258,13 @@ contains
     ! is flux2
     call cmpflx(qm, qp, ilo1-1, ilo2-1, ihi1+2, ihi2+2, &
                 flux2, fd2_l1, fd2_l2, fd2_h1, fd2_h2, &
+                vf2, vf2_l1, vf2_l2, vf2_h1, vf2_h2, &
                 pgdy, pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2, &
                 ugdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                 gegdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                 gamc, csml, c, qd_l1, qd_l2, qd_h1, qd_h2, &
                 shk, ilo1-1, ilo2-1, ihi1+1, ihi2+1, &
                 2, ilo1, ihi1, ilo2, ihi2, domlo, domhi)
-      
 
     ! Construct p div{U} -- this will be used as a source to the internal
     ! energy update.  Note we construct this using the interface states
@@ -262,6 +281,7 @@ contains
     deallocate(fx,fy)
     deallocate(shk)
     deallocate(pgdxtmp,ugdxtmp,gegdxtmp,gegdx,gegdy)
+    deallocate(vf1tmp,vf2tmp)
     
   end subroutine umeth2d
 
@@ -272,6 +292,8 @@ contains
   subroutine ctoprim(lo,hi, &
                      uin,uin_l1,uin_l2,uin_h1,uin_h2, &
                      q,c,gamc,csml,flatn,q_l1,q_l2,q_h1,q_h2, &
+                     vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
+                     vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &
                      src,src_l1,src_l2,src_h1,src_h2, &
                      srcQ,srQ_l1,srQ_l2,srQ_h1,srQ_h2, &
                      courno,dx,dy,dt,ngp,ngf)
@@ -289,7 +311,8 @@ contains
                                    QVAR, QRHO, QU, QV, QREINT, QPRES, QTEMP, QGAME, &
                                    QFS, QFX, &
                                    allow_negative_energy, small_temp, use_flattening, &
-                                   npassive, upass_map, qpass_map, dual_energy_eta1
+                                   npassive, upass_map, qpass_map, dual_energy_eta1, &
+                                   invariant_hydro
     use flatten_module
     use bl_constants_module
 
@@ -300,6 +323,8 @@ contains
     integer lo(2), hi(2)
     integer uin_l1,uin_l2,uin_h1,uin_h2
     integer q_l1,q_l2,q_h1,q_h2
+    integer vf1_l1, vf1_l2, vf1_h1, vf1_h2
+    integer vf2_l1, vf2_l2, vf2_h1, vf2_h2
     integer src_l1,src_l2,src_h1,src_h2
     integer srQ_l1,srQ_l2,srQ_h1,srQ_h2
     
@@ -309,6 +334,8 @@ contains
     double precision :: gamc(q_l1:q_h1,q_l2:q_h2)
     double precision :: csml(q_l1:q_h1,q_l2:q_h2)
     double precision :: flatn(q_l1:q_h1,q_l2:q_h2)
+    double precision :: vf1(vf1_l1:vf1_h1,vf1_l2:vf1_h2,2)
+    double precision :: vf2(vf2_l1:vf2_h1,vf2_l2:vf2_h2,2)
     double precision :: src (src_l1:src_h1,src_l2:src_h2,NVAR)
     double precision :: srcQ(srQ_l1:srQ_h1,srQ_l2:srQ_h2,QVAR)
     double precision :: dx, dy, dt, courno
@@ -425,6 +452,26 @@ contains
           q(i,j,QGAME) = q(i,j,QPRES)/q(i,j,QREINT) + ONE
        enddo
     enddo
+
+    ! Create average velocities at the cell faces
+
+    if (invariant_hydro .eq. 1) then
+    
+       do j = lo(2)-1, hi(2)+1
+          do i = lo(1)-1, hi(1)+2
+             vf1(i,j,1) = HALF * (q(i,j,QU) + q(i-1,j,QU))
+             vf1(i,j,2) = HALF * (q(i,j,QV) + q(i-1,j,QV))
+          enddo
+       enddo
+
+       do j = lo(2)-1, hi(2)+2
+          do i = lo(1)-1, hi(1)+1
+             vf2(i,j,1) = HALF * (q(i,j,QU) + q(i,j-1,QU))
+             vf2(i,j,2) = HALF * (q(i,j,QV) + q(i,j-1,QV))
+          enddo
+       enddo
+
+    endif
     
     ! Compute sources in terms of Q
     do j = lo(2)-1, hi(2)+1
@@ -844,7 +891,7 @@ contains
           initial_mass = initial_mass + uout(i,j,URHO)
           initial_eint = initial_eint + uout(i,j,UEINT)
           initial_eden = initial_eden + uout(i,j,UEDEN)
-          
+
           if (uout(i,j,URHO) .eq. ZERO) then
              
              print *,'   '
@@ -856,6 +903,8 @@ contains
           else if (uout(i,j,URHO) < small_dens) then
              
              max_dens = uout(i,j,URHO)
+             i_set = i
+             j_set = j
              do jj = -1,1
                 do ii = -1,1
                    if (i+ii.ge.lo(1) .and. j+jj.ge.lo(2) .and. &

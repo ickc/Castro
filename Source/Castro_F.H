@@ -53,6 +53,7 @@ BL_FORT_PROC_DECL(SET_METHOD_PARAMS,set_method_params)
      const int& ppm_reference_edge_limit, 
      const int& ppm_flatten_before_integrals,
      const int& ppm_reference_eigenvectors,
+     const int& invariant_hydro,
      const int& hybrid_riemann, 
      const int& use_colglaz, const int& use_flattening,
      const int& transverse_use_eos, const int& transverse_reset_density, const int& transverse_reset_rhoe,

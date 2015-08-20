@@ -265,6 +265,7 @@
                                    ppm_reference_edge_limit_in, &
                                    ppm_flatten_before_integrals_in, &
                                    ppm_reference_eigenvectors_in, &
+                                   invariant_hydro_in, &
                                    hybrid_riemann_in, use_colglaz_in, use_flattening_in, &
                                    transverse_use_eos_in, transverse_reset_density_in, transverse_reset_rhoe_in, &
                                    cg_maxiter_in, cg_tol_in, &
@@ -294,6 +295,7 @@
         integer, intent(in) :: ppm_reference_edge_limit_in
         integer, intent(in) :: ppm_flatten_before_integrals_in
         integer, intent(in) :: ppm_reference_eigenvectors_in
+        integer, intent(in) :: invariant_hydro_in
         integer, intent(in) :: hybrid_riemann_in, use_colglaz_in, use_flattening_in
         integer, intent(in) :: transverse_use_eos_in, transverse_reset_density_in, transverse_reset_rhoe_in
         integer, intent(in) :: dual_energy_update_E_from_e_in
@@ -477,6 +479,7 @@
         ppm_reference_edge_limit     = ppm_reference_edge_limit_in
         ppm_flatten_before_integrals = ppm_flatten_before_integrals_in
         ppm_reference_eigenvectors   = ppm_reference_eigenvectors_in
+        invariant_hydro              = invariant_hydro_in
         hybrid_riemann               = hybrid_riemann_in
         use_colglaz                  = use_colglaz_in
         use_flattening               = use_flattening_in

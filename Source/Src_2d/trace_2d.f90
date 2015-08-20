@@ -11,6 +11,8 @@ contains
   subroutine trace(q,c,flatn,qd_l1,qd_l2,qd_h1,qd_h2, &
                    dloga,dloga_l1,dloga_l2,dloga_h1,dloga_h2, &
                    qxm,qxp,qym,qyp,qpd_l1,qpd_l2,qpd_h1,qpd_h2, &
+                   vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
+                   vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &
                    grav,gv_l1,gv_l2,gv_h1,gv_h2, &
                    ilo1,ilo2,ihi1,ihi2,dx,dy,dt)
 
@@ -28,7 +30,9 @@ contains
     integer dloga_l1,dloga_l2,dloga_h1,dloga_h2
     integer qpd_l1,qpd_l2,qpd_h1,qpd_h2
     integer gv_l1,gv_l2,gv_h1,gv_h2
-
+    integer vf1_l1,vf1_l2,vf1_h1,vf1_h2
+    integer vf2_l1,vf2_l2,vf2_h1,vf2_h2
+    
     double precision dx, dy, dt
     double precision     q(qd_l1:qd_h1,qd_l2:qd_h2,QVAR)
     double precision     c(qd_l1:qd_h1,qd_l2:qd_h2)
@@ -38,6 +42,8 @@ contains
     double precision qxp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,QVAR)
     double precision qym(qpd_l1:qpd_h1,qpd_l2:qpd_h2,QVAR)
     double precision qyp(qpd_l1:qpd_h1,qpd_l2:qpd_h2,QVAR)
+    double precision vf1(vf1_l1:vf1_h1,vf1_l2:vf1_h2,2)
+    double precision vf2(vf2_l1:vf2_h1,vf2_l2:vf2_h2,2)
     double precision grav(gv_l1:gv_h1,gv_l2:gv_h2,2)
 
     double precision, allocatable :: dqx(:,:,:), dqy(:,:,:)
@@ -136,8 +142,6 @@ contains
           cc = c(i,j)
           csq = cc**2
           rho = q(i,j,QRHO)
-          u = q(i,j,QU)
-          v = q(i,j,QV)
           p = q(i,j,QPRES)
           rhoe = q(i,j,QREINT)
           enth = ( (rhoe+p)/rho )/csq
@@ -153,6 +157,9 @@ contains
           alpha0r = drho - dp/csq
           alpha0e = drhoe - dp*enth
           alpha0v = dv
+
+          u = q(i,j,QU) - vf1(i,j,1)
+          v = q(i,j,QV) - vf1(i,j,2)
 
           e(1) = u-cc
           e(2) = u
@@ -183,6 +190,13 @@ contains
              qxp(i,j,QREINT) = rhoe_ref + (apright + amright)*enth*csq + azeright
           end if
 
+
+          u = q(i,j,QU) - vf1(i+1,j,1)
+          v = q(i,j,QV) - vf1(i+1,j,2)
+          
+          e(1) = u-cc
+          e(2) = u
+          e(3) = u+cc
 
           ! construct the left state on the i+1/2 interface
 
@@ -240,7 +254,7 @@ contains
           
           ! Right state
           do i = ilo1, ihi1+1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i,j,1)
              if (u .gt. ZERO) then
                 spzero = -ONE
              else
@@ -252,7 +266,7 @@ contains
           
           ! Left state
           do i = ilo1-1, ihi1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i+1,j,1)
              if (u .ge. ZERO) then
                 spzero = u*dtdx
              else
@@ -271,7 +285,7 @@ contains
           
           ! Right state
           do i = ilo1, ihi1+1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i,j,1)
              if (u .gt. ZERO) then
                 spzero = -ONE
              else
@@ -283,7 +297,7 @@ contains
           
           ! Left state
           do i = ilo1-1, ihi1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i+1,j,1)
              if (u .ge. ZERO) then
                 spzero = u*dtdx
              else
@@ -302,7 +316,7 @@ contains
           
           ! Right state
           do i = ilo1, ihi1+1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i,j,1)
              if (u .gt. ZERO) then
                 spzero = -ONE
              else
@@ -314,7 +328,7 @@ contains
           
           ! Left state
           do i = ilo1-1, ihi1
-             u = q(i,j,QU)
+             u = q(i,j,QU) - vf1(i+1,j,1)
              if (u .ge. ZERO) then
                 spzero = u*dtdx
              else
@@ -339,8 +353,6 @@ contains
           cc = c(i,j)
           csq = cc**2
           rho = q(i,j,QRHO)
-          u = q(i,j,QU)
-          v = q(i,j,QV)
           p = q(i,j,QPRES)
           rhoe = q(i,j,QREINT)
           enth = ( (rhoe+p)/rho )/csq
@@ -356,7 +368,10 @@ contains
           alpha0r = drho - dp/csq
           alpha0e = drhoe - dp*enth
           alpha0u = du
-          
+
+          u = q(i,j,QU) - vf2(i,j,1)
+          v = q(i,j,QV) - vf2(i,j,2)
+
           e(1) = v-cc
           e(2) = v
           e(3) = v+cc
@@ -385,6 +400,13 @@ contains
           end if
 
 
+          u = q(i,j,QU) - vf2(i,j+1,1)
+          v = q(i,j,QV) - vf2(i,j+1,2)
+          
+          e(1) = v-cc
+          e(2) = v
+          e(3) = v+cc
+         
           ! construct the left state on the j+1/2 interface
 
           rho_ref = rho + HALF*(ONE - dtdy*max(e(3),ZERO))*drho
@@ -418,7 +440,7 @@ contains
           
           ! Top state
           do j = ilo2, ihi2+1
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j,2)
              if (v .gt. ZERO) then
                 spzero = -ONE
              else
@@ -430,7 +452,7 @@ contains
           
           ! Bottom state
           do j = ilo2-1, ihi2
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j+1,2)
              if (v .ge. ZERO) then
                 spzero = v*dtdy
              else
@@ -449,7 +471,7 @@ contains
           
           ! Top state
           do j = ilo2, ihi2+1
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j,2)
              if (v .gt. ZERO) then
                 spzero = -ONE
              else
@@ -461,7 +483,7 @@ contains
           
           ! Bottom state
           do j = ilo2-1, ihi2
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j+1,2)
              if (v .ge. ZERO) then
                 spzero = v*dtdy
              else
@@ -480,7 +502,7 @@ contains
           
           ! Top state
           do j = ilo2, ihi2+1
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j,2)
              if (v .gt. ZERO) then
                 spzero = -ONE
              else
@@ -492,7 +514,7 @@ contains
           
           ! Bottom state
           do j = ilo2-1, ihi2
-             v = q(i,j,QV)
+             v = q(i,j,QV) - vf2(i,j+1,2)
              if (v .ge. ZERO) then
                 spzero = v*dtdy
              else

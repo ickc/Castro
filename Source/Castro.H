@@ -596,6 +596,7 @@ protected:
     static int       ppm_reference_edge_limit;
     static int       ppm_flatten_before_integrals;
     static int       ppm_reference_eigenvectors;
+    static int       invariant_hydro;
     static int       hybrid_riemann;
     static int       use_colglaz;
     static int       use_flattening;

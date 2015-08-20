@@ -8,6 +8,7 @@ contains
 
   subroutine transx(qm, qmo, qp, qpo, qd_l1, qd_l2, qd_h1, qd_h2, &
                     fx, fx_l1, fx_l2, fx_h1, fx_h2, &
+                    vf, vf_l1, vf_l2, vf_h1, vf_h2, &
                     pgdx, pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2, &
                     ugdx, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                     gegdx, gegdx_l1, gegdx_l2, gegdx_h1, gegdx_h2, &
@@ -37,6 +38,7 @@ contains
     integer qd_l1, qd_l2, qd_h1, qd_h2
     integer gc_l1, gc_l2, gc_h1, gc_h2
     integer fx_l1, fx_l2, fx_h1, fx_h2
+    integer vf_l1, vf_l2, vf_h1, vf_h2
     integer pgdx_l1, pgdx_l2, pgdx_h1, pgdx_h2
     integer ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2
     integer gegdx_l1, gegdx_l2, gegdx_h1, gegdx_h2
@@ -52,6 +54,7 @@ contains
     double precision qp(qd_l1:qd_h1,qd_l2:qd_h2,QVAR)
     double precision qpo(qd_l1:qd_h1,qd_l2:qd_h2,QVAR)
     double precision fx(fx_l1:fx_h1,fx_l2:fx_h2,NVAR)
+    double precision vf(vf_l1:vf_h1,vf_l2:vf_h2,2)
     double precision pgdx(pgdx_l1:pgdx_h1,pgdx_l2:pgdx_h2)
     double precision ugdx(ugdx_l1:ugdx_h1,ugdx_l2:ugdx_h2)
     double precision gegdx(gegdx_l1:gegdx_h1,gegdx_l2:gegdx_h2)
@@ -117,8 +120,8 @@ contains
 
           pgp = pgdx(i+1,j)
           pgm = pgdx(i,j)
-          ugp = ugdx(i+1,j)
-          ugm = ugdx(i,j)
+          ugp = ugdx(i+1,j) - vf(i+1,j,1)
+          ugm = ugdx(i,j) - vf(i,j,1)
           gegp = gegdx(i+1,j)
           gegm = gegdx(i,j)
 
@@ -374,6 +377,7 @@ contains
 
   subroutine transy(qm, qmo, qp, qpo, qd_l1, qd_l2, qd_h1, qd_h2, &
                     fy,fy_l1,fy_l2,fy_h1,fy_h2, &
+                    vf,vf_l1,vf_l2,vf_h1,vf_h2, &
                     pgdy, pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2, &
                     ugdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                     gegdy, gegdy_l1, gegdy_l2, gegdy_h1, gegdy_h2, &
@@ -399,6 +403,7 @@ contains
     integer qd_l1, qd_l2, qd_h1, qd_h2
     integer gc_l1, gc_l2, gc_h1, gc_h2
     integer fy_l1, fy_l2, fy_h1, fy_h2
+    integer vf_l1, vf_l2, vf_h1, vf_h2
     integer pgdy_l1, pgdy_l2, pgdy_h1, pgdy_h2
     integer ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2
     integer gegdy_l1, gegdy_l2, gegdy_h1, gegdy_h2
@@ -412,6 +417,7 @@ contains
     double precision qp(qd_l1:qd_h1,qd_l2:qd_h2,QVAR)
     double precision qpo(qd_l1:qd_h1,qd_l2:qd_h2,QVAR)
     double precision fy(fy_l1:fy_h1,fy_l2:fy_h2,NVAR)
+    double precision vf(vf_l1:vf_h1,vf_l2:vf_h2,2)
     double precision pgdy(pgdy_l1:pgdy_h1,pgdy_l2:pgdy_h2)
     double precision ugdy(ugdy_l1:ugdy_h1,ugdy_l2:ugdy_h2)
     double precision gegdy(gegdy_l1:gegdy_h1,gegdy_l2:gegdy_h2)
@@ -472,8 +478,8 @@ contains
 
           pgp = pgdy(i,j+1)
           pgm = pgdy(i,j)
-          ugp = ugdy(i,j+1)
-          ugm = ugdy(i,j)
+          ugp = ugdy(i,j+1) - vf(i,j+1,2)
+          ugm = ugdy(i,j) - vf(i,j,2)
           gegp = gegdy(i,j+1)
           gegm = gegdy(i,j)
 
