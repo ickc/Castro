@@ -4,7 +4,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
   use probdata_module
   use prob_params_module, only: center
-  use meth_params_module, only: NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP
+  use meth_params_module, only: NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP, const_grav
   use interpolate_module
   use eos_module
   use eos_type_module
@@ -28,7 +28,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
   double precision const
 
   type (eos_t) :: eos_state
-  
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! compute background state
 
@@ -50,7 +50,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
   ! compute the pressure scale height (for an isothermal, ideal-gas
   ! atmosphere)
-  H = pres_base / dens_base / abs(gravity)
+  H = pres_base / dens_base / abs(const_grav)
 
   do j=0,npts_1d+4
 
@@ -59,7 +59,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
      if (do_isentropic) then
         y = dble(j) * delta(2)
-        density(j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+        density(j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
              (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
      else
         y = (dble(j)+0.5d0) * delta(2)
@@ -68,7 +68,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
      if (j .gt. 0) then
         pressure(j) = pressure(j-1) - &
-             delta(2) * 0.5d0 * (density(j)+density(j-1)) * abs(gravity)
+             delta(2) * 0.5d0 * (density(j)+density(j-1)) * abs(const_grav)
      end if
 
      eos_state%rho = density(j)
@@ -80,7 +80,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
      eint(j) = eos_state%e
      temp(j) = eos_state%T
-     
+
   end do
 
   do j=-1,-5,-1
@@ -90,7 +90,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
 
      if (do_isentropic) then
         y = dble(j) * delta(2)
-        density(j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+        density(j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
              (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
      else
         y = (dble(j)+0.5d0) * delta(2)
@@ -98,7 +98,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
      end if
 
      pressure(j) = pressure(j+1) + &
-          delta(2) * 0.5d0 * (density(j)+density(j+1)) * abs(gravity)
+          delta(2) * 0.5d0 * (density(j)+density(j+1)) * abs(const_grav)
 
      eos_state%rho = density(j)
      eos_state%T = temp(j)
@@ -226,8 +226,8 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2,domlo,domhi,delta,xlo,time
            adv(i,j,UMX) = 0.d0
 
            if (boundary_type .eq. 1) then
-              ! extrapolate normal momentum  
-              ! enforces pi=0 at boundary               
+              ! extrapolate normal momentum
+              ! enforces pi=0 at boundary
               adv(i,j,UMY) = adv(i,domhi(2),UMY)
            else
               ! zero normal momentum
@@ -258,6 +258,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
   use probdata_module
   use interpolate_module
   use eos_module, only: gamma_const
+  use meth_params_module, only : const_grav
 
   implicit none
   include 'bc_types.fi'
@@ -272,7 +273,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
   ! compute the pressure scale height (for an isothermal, ideal-gas
   ! atmosphere)
-  H = pres_base / dens_base / abs(gravity)
+  H = pres_base / dens_base / abs(const_grav)
 
   !     Note: this function should not be needed, technically, but is provided
   !     to filpatch because there are many times in the algorithm when just
@@ -288,7 +289,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
            if (do_isentropic) then
               y = xlo(2) + delta(2)*float(j-adv_l2)
-              adv(i,j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+              adv(i,j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
                    (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
            else
               y = xlo(2) + delta(2)*(float(j-adv_l2) + 0.5d0)
@@ -306,7 +307,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
            if (do_isentropic) then
               y = xlo(2) + delta(2)*float(j-adv_l2)
-              adv(i,j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+              adv(i,j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
                    (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
            else
               y = xlo(2) + delta(2)*(float(j-adv_l2) + 0.5d0)
@@ -324,7 +325,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
            if (do_isentropic) then
               y = xlo(2) + delta(2)*float(j-adv_l2)
-              adv(i,j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+              adv(i,j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
                    (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
            else
               y = xlo(2) + delta(2)*(float(j-adv_l2) + 0.5d0)
@@ -342,7 +343,7 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
            if (do_isentropic) then
               y = xlo(2) + delta(2)*float(j-adv_l2)
-              adv(i,j) = dens_base*(gravity*dens_base*(gamma_const - 1.0)*y/ &
+              adv(i,j) = dens_base*(const_grav*dens_base*(gamma_const - 1.0)*y/ &
                    (gamma_const*pres_base) + 1.d0)**(1.d0/(gamma_const - 1.d0))
            else
               y = xlo(2) + delta(2)*(float(j-adv_l2) + 0.5d0)
@@ -356,7 +357,6 @@ subroutine ca_denfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 end subroutine ca_denfill
 
 ! ::: -----------------------------------------------------------
-
 
 subroutine ca_gravxfill(grav,grav_l1,grav_l2,grav_h1,grav_h2, &
      domlo,domhi,delta,xlo,time,bc)
@@ -393,3 +393,42 @@ subroutine ca_gravyfill(grav,grav_l1,grav_l2,grav_h1,grav_h2, &
   call filcc(grav,grav_l1,grav_l2,grav_h1,grav_h2,domlo,domhi,delta,xlo,bc)
 
 end subroutine ca_gravyfill
+
+! ::: -----------------------------------------------------------
+
+subroutine ca_gravzfill(grav,grav_l1,grav_l2,grav_h1,grav_h2, &
+     domlo,domhi,delta,xlo,time,bc)
+
+  use probdata_module
+  implicit none
+  include 'bc_types.fi'
+
+  integer :: grav_l1,grav_l2,grav_h1,grav_h2
+  integer :: bc(2,2,*)
+  integer :: domlo(2), domhi(2)
+  double precision delta(2), xlo(2), time
+  double precision grav(grav_l1:grav_h1,grav_l2:grav_h2)
+
+  call filcc(grav,grav_l1,grav_l2,grav_h1,grav_h2,domlo,domhi,delta,xlo,bc)
+
+end subroutine ca_gravzfill
+
+! ::: -----------------------------------------------------------
+
+subroutine ca_phigravfill(phi,phi_l1,phi_l2, &
+                          phi_h1,phi_h2,domlo,domhi,delta,xlo,time,bc)
+
+  implicit none
+
+  include 'bc_types.fi'
+
+  integer          :: phi_l1,phi_l2,phi_h1,phi_h2
+  integer          :: bc(2,2,*)
+  integer          :: domlo(2), domhi(2)
+  double precision :: delta(2), xlo(2), time
+  double precision :: phi(phi_l1:phi_h1,phi_l2:phi_h2)
+
+  call filcc(phi,phi_l1,phi_l2,phi_h1,phi_h2, &
+             domlo,domhi,delta,xlo,bc)
+
+end subroutine ca_phigravfill

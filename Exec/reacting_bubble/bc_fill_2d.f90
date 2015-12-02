@@ -2,7 +2,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
                       domlo,domhi,delta,xlo,time,bc)
 
   use probdata_module
-  use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP
+  use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UTEMP
   use interpolate_module
   use eos_module
   use network, only: nspec
@@ -60,7 +60,8 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  ! zero transverse momentum
                  adv(i,j,UMY) = 0.d0
-
+                 adv(i,j,UMZ) = 0.d0
+                 
                  eos_state%rho = density
                  eos_state%T = temperature
                  eos_state%xn(:) = species(:)
@@ -69,7 +70,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  adv(i,j,URHO) = density
                  adv(i,j,UEINT) = density*eos_state%e
-                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/density
+                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2+adv(i,j,UMZ)**2)/density
                  adv(i,j,UTEMP) = temperature
                  adv(i,j,UFS:UFS+2) = density*species
 
@@ -105,7 +106,8 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  ! zero transverse momentum
                  adv(i,j,UMY) = 0.d0
-
+                 adv(i,j,UMZ) = 0.d0
+                 
                  eos_state%rho = density
                  eos_state%T = temperature
                  eos_state%xn(:) = species(:)
@@ -114,7 +116,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  adv(i,j,URHO) = density
                  adv(i,j,UEINT) = density*eos_state%e
-                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/density
+                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2+adv(i,j,UMZ)**2)/density
                  adv(i,j,UTEMP) = temperature
                  adv(i,j,UFS:UFS+2) = density*species
 
@@ -152,7 +154,8 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  ! zero transverse momentum
                  adv(i,j,UMX) = 0.d0
-
+                 adv(i,j,UMZ) = 0.d0
+                 
                  eos_state%rho = density
                  eos_state%T = temperature
                  eos_state%xn(:) = species(:)
@@ -161,7 +164,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  adv(i,j,URHO) = density
                  adv(i,j,UEINT) = density*eos_state%e
-                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/density
+                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2+adv(i,j,UMZ)**2)/density
                  adv(i,j,UTEMP) = temperature
                  adv(i,j,UFS:UFS+2) = density*species
 
@@ -195,7 +198,8 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  ! zero transverse momentum
                  adv(i,j,UMX) = 0.d0
-
+                 adv(i,j,UMZ) = 0.d0
+                 
                  eos_state%rho = density
                  eos_state%T = temperature
                  eos_state%xn(:) = species(:)
@@ -204,7 +208,7 @@ subroutine ca_hypfill(adv,adv_l1,adv_l2,adv_h1,adv_h2, &
 
                  adv(i,j,URHO) = density
                  adv(i,j,UEINT) = density*eos_state%e
-                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2)/density
+                 adv(i,j,UEDEN) = density*eos_state%e + 0.5d0*(adv(i,j,UMX)**2+adv(i,j,UMY)**2+adv(i,j,UMZ)**2)/density
                  adv(i,j,UTEMP) = temperature
                  adv(i,j,UFS:UFS+2) = density*species
 
@@ -332,6 +336,25 @@ end subroutine ca_gravyfill
 
 ! ::: -----------------------------------------------------------
 
+subroutine ca_gravzfill(grav,grav_l1,grav_l2,grav_h1,grav_h2, &
+                        domlo,domhi,delta,xlo,time,bc)
+
+  use probdata_module
+  implicit none
+  include 'bc_types.fi'
+
+  integer :: grav_l1,grav_l2,grav_h1,grav_h2
+  integer :: bc(2,2,*)
+  integer :: domlo(2), domhi(2)
+  double precision delta(2), xlo(2), time
+  double precision grav(grav_l1:grav_h1,grav_l2:grav_h2)
+
+  call filcc(grav,grav_l1,grav_l2,grav_h1,grav_h2,domlo,domhi,delta,xlo,bc)
+
+end subroutine ca_gravzfill
+
+! ::: -----------------------------------------------------------
+
 subroutine ca_reactfill(react,react_l1,react_l2, &
                         react_h1,react_h2,domlo,domhi,delta,xlo,time,bc)
 
@@ -348,3 +371,22 @@ subroutine ca_reactfill(react,react_l1,react_l2, &
   call filcc(react,react_l1,react_l2,react_h1,react_h2,domlo,domhi,delta,xlo,bc)
 
 end subroutine ca_reactfill
+
+
+subroutine ca_phigravfill(phi,phi_l1,phi_l2, &
+                          phi_h1,phi_h2,domlo,domhi,delta,xlo,time,bc)
+
+  implicit none
+
+  include 'bc_types.fi'
+
+  integer          :: phi_l1,phi_l2,phi_h1,phi_h2
+  integer          :: bc(2,2,*)
+  integer          :: domlo(2), domhi(2)
+  double precision :: delta(2), xlo(2), time
+  double precision :: phi(phi_l1:phi_h1,phi_l2:phi_h2)
+
+  call filcc(phi,phi_l1,phi_l2,phi_h1,phi_h2, &
+             domlo,domhi,delta,xlo,bc)
+
+end subroutine ca_phigravfill

@@ -15,8 +15,7 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
 
   namelist /fortin/ model_name, apply_vel_field, &
        velpert_scale, velpert_amplitude, velpert_height_loc, num_vortices, &
-       H_min, cutoff_density, interp_BC, zero_vels, &
-       sponge_center_density, sponge_start_factor, sponge_kappa
+       H_min, cutoff_density, interp_BC, zero_vels
 
   integer, parameter :: maxlen = 256
   character probin*(maxlen)
@@ -41,10 +40,6 @@ subroutine PROBINIT (init,name,namlen,problo,probhi)
   cutoff_density = 50.d0
   interp_BC = .false.
   zero_vels = .false.
-  
-  sponge_center_density = 25.d0
-  sponge_start_factor = 2.0d0
-  sponge_kappa = 1000.d0
   
   ! Read namelists
   untin = 9
@@ -101,7 +96,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   use probdata_module
   use interpolate_module
   use eos_module
-  use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UFS, UTEMP
+  use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UFS, UTEMP
   use network, only: nspec
   use model_parser_module
 
@@ -165,7 +160,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
   enddo
 
   ! Initial velocities = 0
-  state(:,:,UMX:UMY) = 0.d0
+  state(:,:,UMX:UMZ) = 0.d0
 
   ! Now add the velocity perturbation
   if (apply_vel_field) then
@@ -197,6 +192,7 @@ subroutine ca_initdata(level,time,lo,hi,nscal, &
            
            state(i,j,UMX) = state(i,j,URHO) * upert(1)
            state(i,j,UMY) = state(i,j,URHO) * upert(2)                  
+           state(i,j,UMZ) = ZERO
            
         end do
      end do

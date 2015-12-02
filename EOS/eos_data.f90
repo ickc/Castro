@@ -1,7 +1,5 @@
 module eos_data_module
 
-  use bl_types
-
   implicit none
 
   integer, parameter :: eos_input_rt = 1  ! rho, T are inputs
@@ -33,29 +31,20 @@ module eos_data_module
   integer, parameter :: ierr_out_of_bounds   = 11
   integer, parameter :: ierr_not_implemented = 12
 
-  real(kind=dp_t), save :: smallt
-  real(kind=dp_t), save :: smalld
+  ! Smallest possible temperature and density permitted by the user.
 
-  logical, save :: initialized = .false.
+  double precision, save :: smallt = 1.d-200
+  double precision, save :: smalld = 1.d-200
 
-  public eos_get_small_temp, eos_get_small_dens
+  ! Minimum and maximum temperature, density, and ye permitted by the EOS.
 
-contains
+  double precision, save :: mintemp = 1.d-200
+  double precision, save :: maxtemp = 1.d200
+  double precision, save :: mindens = 1.d-200
+  double precision, save :: maxdens = 1.d200
+  double precision, save :: minye   = 1.d-200
+  double precision, save :: maxye   = 1.d0 + 1.d-12
 
-  subroutine eos_get_small_temp(small_temp_out)
- 
-    real(kind=dp_t), intent(out) :: small_temp_out
- 
-    small_temp_out = smallt
- 
-  end subroutine eos_get_small_temp
- 
-  subroutine eos_get_small_dens(small_dens_out)
- 
-    real(kind=dp_t), intent(out) :: small_dens_out
- 
-    small_dens_out = smalld
- 
-  end subroutine eos_get_small_dens
-
+  logical, save :: initialized = .false.  
+  
 end module eos_data_module

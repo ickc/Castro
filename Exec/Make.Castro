@@ -1,9 +1,11 @@
 BOXLIB_HOME ?= /path/to/BoxLib
+CASTRO_DIR ?= /path/to/Castro
 
 TOP := $(CASTRO_DIR)
 
-EOS_HOME     ?= $(TOP)/EOS
+EOS_HOME ?= $(TOP)/EOS
 NETWORK_HOME ?= $(TOP)/Networks
+COND_HOME ?= $(TOP)/Conductivity
 
 EBASE = Castro
 
@@ -96,6 +98,7 @@ endif
 
 ifeq ($(USE_HDF5), TRUE)
    INCLUDE_LOCATIONS += $(HDF5_DIR)/include
+   INCLUDE_LOCATIONS += $(HDF5_INCL)
    LIBRARY_LOCATIONS += $(HDF5_DIR)/lib
    LIBRARIES += -lhdf5 -lhdf5_fortran -lhdf5 -lz
 endif
@@ -105,8 +108,22 @@ all: $(executable)
 	@echo SUCCESS
 
 
-EOS_PATH := $(EOS_HOME)/$(strip $(EOS_dir))
-NETWORK_PATH := $(NETWORK_HOME)/$(strip $(Network_dir))
+ifdef MICROPHYSICS_DIR
+      EOS_PATH := $(MICROPHYSICS_DIR)/eos/$(strip $(EOS_dir))
+      NETWORK_PATH := $(MICROPHYSICS_DIR)/networks/$(strip $(Network_dir))
+      SCREEN_PATH := $(MICROPHYSICS_DIR)/screening
+endif
+
+ifneq "$(wildcard $(EOS_HOME)/$(strip $(EOS_dir)) )" ""
+      EOS_PATH := $(EOS_HOME)/$(strip $(EOS_dir))
+endif
+ifneq "$(wildcard $(NETWORK_HOME)/$(strip $(Network_dir)) )" ""
+      NETWORK_PATH := $(NETWORK_HOME)/$(strip $(Network_dir))
+endif
+
+ifeq ($(USE_DIFFUSION), TRUE)
+  COND_PATH := $(COND_HOME)/$(strip $(Conductivity_dir))
+endif
 
 ifeq ($(USE_RAD), TRUE)
   ifneq "$(wildcard $(RADIATION_DIR)/EOS/$(strip $(EOS_dir)) )" ""
@@ -125,31 +142,57 @@ endif
 
 include $(EOS_HOME)/Make.package
 include $(EOS_PATH)/Make.package
+EXTERN_CORE += $(EOS_HOME)
 EXTERN_CORE += $(EOS_PATH)
 
-# the helmeos has an include file -- also add a target to link the table
+# the helmholtz EOS has an include file -- also add a target to link the table
 # into the problem directory.
-ifeq ($(findstring helmeos, $(EOS_dir)), helmeos)
+ifeq ($(findstring helmholtz, $(EOS_dir)), helmholtz)
   all: table
 endif
 
 table:
 	@if [ ! -f helm_table.dat ]; then echo Linking helm_table.dat; ln -s $(EOS_PATH)/helm_table.dat .;  fi
 
+include $(NETWORK_HOME)/Make.package
 include $(NETWORK_PATH)/Make.package
+EXTERN_CORE += $(NETWORK_HOME)
 EXTERN_CORE += $(NETWORK_PATH)
+
+ifdef MICROPHYSICS_DIR
+  include $(SCREEN_PATH)/Make.package
+  EXTERN_CORE += $(SCREEN_PATH)
+endif
+
+ifeq ($(USE_DIFFUSION), TRUE)
+  include $(COND_PATH)/Make.package
+  EXTERN_CORE += $(COND_PATH)
+endif	      
 
 ifeq ($(USE_RAD), TRUE)
   include $(RADIATION_DIR)/Opacity/$(Opacity_dir)/Make.package
   EXTERN_CORE += $(RADIATION_DIR)/Opacity/$(Opacity_dir)  
 endif
 
+INCLUDE_LOCATIONS += $(EOS_HOME)
 INCLUDE_LOCATIONS += $(EOS_PATH)
+VPATH_LOCATIONS   += $(EOS_HOME)
 VPATH_LOCATIONS   += $(EOS_PATH)
-VPATH_LOCATIONS   += $(EOS_HOME)/
 
+INCLUDE_LOCATIONS += $(NETWORK_HOME)
 INCLUDE_LOCATIONS += $(NETWORK_PATH)
+VPATH_LOCATIONS   += $(NETWORK_HOME)
 VPATH_LOCATIONS   += $(NETWORK_PATH)
+
+ifeq ($(USE_DIFFUSION), TRUE)
+  INCLUDE_LOCATIONS += $(COND_PATH)
+  VPATH_LOCATIONS   += $(COND_PATH)
+endif
+
+ifdef MICROPHYSICS_DIR
+  INCLUDE_LOCATIONS += $(SCREEN_PATH)
+  VPATH_LOCATIONS   += $(SCREEN_PATH)
+endif
 
 ifeq ($(USE_RAD), TRUE)
   INCLUDE_LOCATIONS += $(RADIATION_DIR)/Opacity/$(Opacity_dir)/
@@ -186,7 +229,7 @@ VPATH_LOCATIONS   += $(TOP)/Util/plot1d
 endif
 
 
-Bdirs 	:= Source Source/Src_$(DIM)d
+Bdirs 	:= Source Source/Src_$(DIM)d Source/Src_nd
 
 
 Pdirs 	:= C_BaseLib C_AMRLib C_BoundaryLib 
@@ -293,6 +336,7 @@ vpath %.h   . $(VPATH_LOCATIONS)
 vpath %.H   . $(VPATH_LOCATIONS)
 vpath %.F   . $(VPATH_LOCATIONS)
 vpath %.f90 . $(VPATH_LOCATIONS)
+vpath %.F90 . $(VPATH_LOCATIONS)
 vpath %.f   . $(VPATH_LOCATIONS)
 vpath %.fi  . $(VPATH_LOCATIONS)
 
@@ -302,6 +346,17 @@ include $(BOXLIB_HOME)/Tools/C_mk/Make.rules
 clean::
 	$(SILENT) $(RM) extern.f90
 	$(SILENT) $(RM) buildInfo.cpp
+
+# Older versions of CASTRO generated a
+# "network.f90" file when using the
+# general_null network, which conflicts
+# with our generalized network.f90 file.
+# So we should delete the local copy if
+# we are trying to rebuild from an old directory.
+
+clean::
+	$(RM) network.f90
+	@if [ -L helm_table.dat ]; then rm -f helm_table.dat; fi
 
 
 #-----------------------------------------------------------------------------

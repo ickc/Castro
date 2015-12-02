@@ -6,14 +6,15 @@
 #include <AmrLevel.H>
 #include <ErrorList.H>
 #include <FluxRegister.H>
+#include <BL_CXX11.H>
 
 #ifdef BL_LAZY
 #include <Lazy.H>
 #endif
 
 #ifdef PARTICLES
-#include "Particles.H"
-typedef ParticleContainer<1+BL_SPACEDIM> DarkMatterParticleContainer;  // mass + velocities
+#include "AmrParticles.H"
+typedef AmrParticleContainer<1+BL_SPACEDIM> DarkMatterParticleContainer;  // mass + velocities
 #endif
 
 #include <iostream>
@@ -34,6 +35,11 @@ enum StateType { State_Type = 0,
                  PhiGrav_Type,
                  Gravity_Type,
 #endif
+#ifdef ROTATION
+		 PhiRot_Type,
+		 Rotation_Type,
+#endif
+		 Source_Type,
 #ifdef LEVELSET
                  LS_State_Type,
 #endif
@@ -69,38 +75,38 @@ public:
     //
     //The destructor.
     //
-    virtual ~Castro ();
+    virtual ~Castro () BL_OVERRIDE;
     //
     //Restart from a checkpoint file.
     //
     virtual void restart (Amr&     papa,
                           istream& is,
-			  bool bReadSpecial = false);
+			  bool bReadSpecial = false) BL_OVERRIDE;
     //
     //This is called only when we restart from an old checkpoint.
     //
-    virtual void set_state_in_checkpoint (Array<int>& state_in_checkpoint);
+    virtual void set_state_in_checkpoint (Array<int>& state_in_checkpoint) BL_OVERRIDE;
     //
     //Call AmrLevel::checkPoint and then add radiation info
     //
     virtual void checkPoint(const std::string& dir,
                             std::ostream&      os,
                             VisMF::How         how,
-                            bool               dump_old);
+                            bool               dump_old) BL_OVERRIDE;
 
     /*A string written as the first item in writePlotFile() at
                level zero. It is so we can distinguish between different
                types of plot files. For Castro it has the form: Castro-Vnnn
     */
-    virtual std::string thePlotFileType () const;
+    virtual std::string thePlotFileType () const BL_OVERRIDE;
 
-    virtual void setPlotVariables ();
+    virtual void setPlotVariables () BL_OVERRIDE;
     //
     //Write a plotfile to specified directory.
     //
     virtual void writePlotFile (const std::string& dir,
                                 ostream&       os,
-                                VisMF::How     how);
+                                VisMF::How     how) BL_OVERRIDE;
     //
     //Define data descriptors.
     //
@@ -116,7 +122,7 @@ public:
     //
     //Initialize grid data at problem start-up.
     //
-    virtual void initData ();
+    virtual void initData () BL_OVERRIDE;
 
 #ifdef PARTICLES
     //
@@ -152,7 +158,7 @@ public:
     //
     //Initialize particle locations and velocities (and strengths if relevant)
     //
-    virtual void init_particles ();
+    virtual void init_particles () BL_OVERRIDE;
 
     //
     // Time step control based on particles
@@ -200,26 +206,26 @@ public:
     //
     virtual void setTimeLevel (Real time,
                                Real dt_old,
-                               Real dt_new);
+                               Real dt_new) BL_OVERRIDE;
     //
     //Initialize data on this level from another Castro (during regrid).
     //
-    virtual void init (AmrLevel& old);
+    virtual void init (AmrLevel& old) BL_OVERRIDE;
     //
     //Initialize data on this level after regridding if old level did not previously exist
     //
-    virtual void init ();
+    virtual void init () BL_OVERRIDE;
     //
     //Proceed with next timestep?
     //
-    virtual int okToContinue ();
+    virtual int okToContinue () BL_OVERRIDE;
     //
     //Advance grids at this level in time.
     //
     virtual Real advance (Real time,
                           Real dt,
                           int  iteration,
-                          int  ncycle);
+                          int  ncycle) BL_OVERRIDE;
 
     Real advance_hydro (Real time,
                         Real dt,
@@ -252,7 +258,7 @@ public:
                                    Array<int>&           n_cycle,
                                    const Array<IntVect>& ref_ratio,
                                    Array<Real>&          dt_level,
-                                   Real                  stop_time);
+                                   Real                  stop_time) BL_OVERRIDE;
     //
     //Compute new `dt'.
     //
@@ -263,15 +269,15 @@ public:
                                Array<Real>&          dt_min,
                                Array<Real>&          dt_level,
                                Real                  stop_time,
-                               int                   post_regrid_flag);
+                               int                   post_regrid_flag) BL_OVERRIDE;
     //
     //Allocate data at old time.
     //
-    virtual void allocOldData ();
+    virtual void allocOldData () BL_OVERRIDE;
     //
     //Remove data at old time.
     //
-    virtual void removeOldData ();
+    virtual void removeOldData () BL_OVERRIDE;
     //
     //Print information about energy budget.
     //
@@ -279,24 +285,24 @@ public:
     //
     //Do work after timestep().
     //
-    virtual void post_timestep (int iteration);
+    virtual void post_timestep (int iteration) BL_OVERRIDE;
     //
     // Contains operations to be done only after a full coarse timestep.
     //
-    virtual void postCoarseTimeStep (Real cumtime);
+    virtual void postCoarseTimeStep (Real cumtime) BL_OVERRIDE;
     //
     //Do work after regrid().
     //
     virtual void post_regrid (int lbase,
-                              int new_finest);   
+                              int new_finest) BL_OVERRIDE;   
     //
     //Do work after a restart().
     //
-    virtual void post_restart ();
+    virtual void post_restart () BL_OVERRIDE;
     //
     //Do work after init().
     //
-    virtual void post_init (Real stop_time);
+    virtual void post_init (Real stop_time) BL_OVERRIDE;
     //
     //Do work after restart with grown_factor > 1
     //
@@ -308,40 +314,34 @@ public:
                            int          clearval,
                            int          tagval,
                            Real         time,
-			   int          n_error_buf = 0, int ngrow = 0);
+			   int          n_error_buf = 0,
+			   int          ngrow = 0) BL_OVERRIDE;
 
     // Returns a MultiFab containing the derived data for this level.
     // The user is responsible for deleting this pointer when done
     // with it.  If ngrow>0 the MultiFab is built on the appropriately
     // grown BoxArray.
-    MultiFab* derive (const std::string& name,
-                      Real               time,
-                      int                ngrow);
+    virtual MultiFab* derive (const std::string& name,
+			      Real               time,
+			      int                ngrow) BL_OVERRIDE;
 
     // This version of derive() fills the dcomp'th component of mf with the derived quantity.
-    void derive (const std::string& name,
-                 Real               time,
-                 MultiFab&          mf,
-                 int                dcomp);
+    virtual void derive (const std::string& name,
+			 Real               time,
+			 MultiFab&          mf,
+			 int                dcomp) BL_OVERRIDE;
 
     static int numGrow();
 
 #ifdef REACTIONS
-    void react_first_half_dt(FArrayBox& S_old, 
-                             FArrayBox& React_Fab,
+    void react_half_dt(MultiFab& state,
+		       MultiFab& reactions,
 #ifdef TAU
-                             FArrayBox&  tau,
+		       MultiFab& tau,
 #endif
-                             Real time, 
-                             Real dt);
-
-    void react_second_half_dt(MultiFab& S_new, 
-#ifdef TAU
-                              MultiFab&  tau,
-#endif
-                              Real time, 
-                              Real dt,
-                              int ngrow = 0);
+		       Real time, 
+		       Real dt,
+		       int  ngrow = 0);
 
     void strang_chem (MultiFab&  state,
                       MultiFab&  react_mf,
@@ -350,16 +350,10 @@ public:
 #endif
                       Real       time,
                       Real       dt);
-
-    void reactState (FArrayBox&  Snew,
-                     FArrayBox&  Sold,
-                     FArrayBox&  ReactionTerms,
-#ifdef TAU
-                     FArrayBox&  tau,
 #endif
-                     const Box&  bx,
-                     Real        time,
-                     Real        dt_react);
+
+#ifdef ROTATION
+    void fill_rotation_field(MultiFab& phi, MultiFab& rot, MultiFab& state, Real time);
 #endif
 
 #ifdef RADIATION
@@ -382,24 +376,38 @@ public:
                             Real dt);
 
 #ifdef SGS
-    void getOldSource (Real old_time, Real dt, MultiFab& Rhs, MultiFab* sgs_fluxes);
-    void getNewSource (Real new_time, Real dt, MultiFab& Rhs, MultiFab* sgs_fluxes);
+    void getSource (Real time, Real dt, MultiFab& state, MultiFab& src, MultiFab& sgs_state, MultiFab* sgs_fluxes);
 #else
-    void getOldSource (Real old_time,                Real dt, MultiFab& Rhs);
-    void getNewSource (Real old_time, Real new_time, Real dt, MultiFab& Rhs);
+    void getSource (Real time, Real dt, MultiFab& state_old, MultiFab& state_new, MultiFab& src, int ngrow = 0);
 #endif
 
 #ifdef DIFFUSION
     void getTempDiffusionTerm (Real time, MultiFab& TempDiffTerm, MultiFab* tau = 0);
+    void getSpecDiffusionTerm (Real time, MultiFab& SpecDiffTerm);
+#if (BL_SPACEDIM == 1)
+    void getViscousTerm (Real time, MultiFab& ViscousTermforMomentum, MultiFab& ViscousTermforEnergy);
+    void getFirstViscousTerm (Real time, MultiFab& ViscousTerm);
+    void getSecndViscousTerm (Real time, MultiFab& ViscousTerm);
+    void getViscousTermForEnergy (Real time, MultiFab& ViscousTermforEnergy);
+#endif
 #ifdef TAU
     void define_tau (MultiFab& tau_diff, MultiFab& grav_vector, Real time);
-    void add_diffusion_to_source (MultiFab& ext_src, MultiFab& TempDiffTerm, Real t, MultiFab& tau_diff);
-    void time_center_diffusion       (MultiFab& S_new, MultiFab& OldTempDiffTerm, Real  cur_time, Real dt, MultiFab& tau_diff);
-    void full_diffusion_update       (MultiFab& S_new, Real prev_time, Real cur_time, Real dt, MultiFab& tau_diff);
+    void add_temp_diffusion_to_source (MultiFab& ext_src, MultiFab& TempDiffTerm, Real t, MultiFab& tau_diff);
+    void time_center_temp_diffusion   (MultiFab& S_new, MultiFab& OldTempDiffTerm, Real  cur_time, Real dt, MultiFab& tau_diff);
+    void full_temp_diffusion_update   (MultiFab& S_new, Real prev_time, Real cur_time, Real dt, MultiFab& tau_diff);
 #else
-    void add_diffusion_to_source (MultiFab& ext_src, MultiFab& TempDiffTerm, Real t);
-    void time_center_diffusion       (MultiFab& S_new, MultiFab& OldTempDiffTerm, Real  cur_time, Real dt);
-    void full_diffusion_update       (MultiFab& S_new, Real prev_time, Real cur_time, Real dt);
+    void add_temp_diffusion_to_source (MultiFab& ext_src, MultiFab& TempDiffTerm, Real t);
+    void time_center_temp_diffusion   (MultiFab& S_new, MultiFab& OldTempDiffTerm, Real  cur_time, Real dt);
+    void full_temp_diffusion_update   (MultiFab& S_new, Real prev_time, Real cur_time, Real dt);
+#endif
+    void add_spec_diffusion_to_source (MultiFab& ext_src, MultiFab& TempDiffTerm, Real t);
+    void time_center_spec_diffusion   (MultiFab& S_new, MultiFab& OldTempDiffTerm, Real  cur_time, Real dt);
+    void full_spec_diffusion_update   (MultiFab& S_new, Real prev_time, Real cur_time, Real dt);
+#if (BL_SPACEDIM == 1)
+    void add_viscous_term_to_source   (MultiFab& ext_src, MultiFab& ViscousTermforMomentum, 
+                                       MultiFab& ViscousTermforEnergy, Real t);
+    void time_center_viscous_term     (MultiFab& S_new, MultiFab& OldViscousTermforMomentum, 
+                                       MultiFab& ViscousTermforEnergy, Real  cur_time, Real dt);
 #endif
 #endif
 
@@ -429,6 +437,8 @@ public:
     Real get_point_mass ();
 
     void set_special_tagging_flag (Real time);
+
+    void add_force_to_sources (MultiFab& force, MultiFab& sources, MultiFab& state);
 
     void make_radial_data (int is_new);
 
@@ -525,31 +535,6 @@ protected:
 #endif
 
     //
-    // Interpolate cell-centered cync correction from coarse to fine.
-    //
-    enum SyncInterpType
-    {
-        PC_T,
-        CellCons_T,
-        CellConsLin_T,
-        CellConsProt_T
-    };
-
-    void SyncInterp (MultiFab&      CrseSync,
-                     int            c_lev,
-                     MultiFab&      FineSync,
-                     int            f_lev,
-                     IntVect&       ratio,
-                     int            src_comp,
-                     int            dest_comp,
-                     int            num_comp,
-                     int            increment,
-                     Real           dt_clev,
-                     int**          bc_orig_qty,
-                     SyncInterpType which_interp = CellCons_T,
-                     int            state_comp   = -1);
-
-    //
     // The data.
     //
     MultiFab             volume;
@@ -571,6 +556,7 @@ protected:
     static int       radius_grow;
     static int       verbose;
     static Real      cfl;
+    static Real      burning_timestep_factor;  
     static Real      init_shrink;
     static Real      change_max;
     static int       do_reflux;
@@ -588,8 +574,7 @@ protected:
 
     static int       ppm_type;
     static int       ppm_reference;
-    static int       ppm_trace_grav;
-    static int       ppm_trace_rot;
+    static int       ppm_trace_sources;
     static int       ppm_temp_fix;
     static int       ppm_tau_in_tracing;
     static int       ppm_predict_gammae;
@@ -599,14 +584,17 @@ protected:
     static int       invariant_hydro;
     static int       hybrid_riemann;
     static int       use_colglaz;
+    static int       riemann_solver;
     static int       use_flattening;
     static int       transverse_use_eos;
     static int       transverse_reset_density;
     static int       transverse_reset_rhoe;
+    static int       source_term_predictor;
 
     static int       dual_energy_update_E_from_e;
     static Real      dual_energy_eta1;
     static Real      dual_energy_eta2;
+    static Real      dual_energy_eta3;
 
     static int       cg_maxiter;
     static Real      cg_tol;
@@ -630,12 +618,18 @@ protected:
 
     static Real getCPUTime();
 
+    // for keeping track of energy change from burning
+    static Real      max_delta_e;
+
 #ifdef POINTMASS
     static Real      point_mass;
 #endif
 
 #ifdef DIFFUSION
     static int       diffuse_temp;
+    static int       diffuse_spec;
+    static int       diffuse_vel;
+    static Real      diffuse_cutoff_density;
 #endif
 
 #ifdef PARTICLES
@@ -669,6 +663,9 @@ protected:
 
     // permits sponge to be turned on and off
     static int do_sponge;
+
+    // determines whether we use accelerators for specific loops
+    static int do_acc;
 
     // permits rotation calculation to be turned on and off
     static int do_rotation;
@@ -715,6 +712,7 @@ protected:
 
 #ifdef ROTATION
   static Real rotational_period;
+  static Real rotational_dPdt;
   static int rot_source_type;
   static int rot_axis;
 #endif

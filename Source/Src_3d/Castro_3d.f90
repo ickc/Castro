@@ -8,8 +8,7 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
                     ugdnvx_out,ugdnvx_l1,ugdnvx_l2,ugdnvx_l3,ugdnvx_h1,ugdnvx_h2,ugdnvx_h3, &
                     ugdnvy_out,ugdnvy_l1,ugdnvy_l2,ugdnvy_l3,ugdnvy_h1,ugdnvy_h2,ugdnvy_h3, &
                     ugdnvz_out,ugdnvz_l1,ugdnvz_l2,ugdnvz_l3,ugdnvz_h1,ugdnvz_h2,ugdnvz_h3, &
-                    src ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-                    grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
+                    src,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                     delta,dt, &
                     flux1,flux1_l1,flux1_l2,flux1_l3,flux1_h1,flux1_h2,flux1_h3, &
                     flux2,flux2_l1,flux2_l2,flux2_l3,flux2_h1,flux2_h2,flux2_h3, &
@@ -20,19 +19,13 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
                     vol,vol_l1,vol_l2,vol_l3,vol_h1,vol_h2,vol_h3, &
                     courno,verbose,mass_added,eint_added,eden_added,&
                     xmom_added_flux,ymom_added_flux,zmom_added_flux,&
-                    xmom_added_grav,ymom_added_grav,zmom_added_grav,&
-                    xmom_added_rot,ymom_added_rot,zmom_added_rot,&
-                    xmom_added_sponge,ymom_added_sponge,zmom_added_sponge,&
-                    E_added_rot,E_added_flux,E_added_grav,E_added_sponge)
+                    E_added_flux)
 
   use mempool_module, only : bl_allocate, bl_deallocate
-  use meth_params_module, only : QVAR, NVAR, NHYP, do_sponge, &
-                                 normalize_species, do_grav, do_rotation
+  use meth_params_module, only : QVAR, NVAR, NHYP, &
+                                 normalize_species
   use advection_module, only : umeth3d, ctoprim, divu, consup, enforce_minimum_density, &
        normalize_new_species
-  use sponge_module, only : sponge
-  use grav_sources_module, only : add_grav_source
-  use rot_sources_module, only : add_rot_source, fill_rotation_field
 
   implicit none
 
@@ -52,14 +45,12 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   integer area3_l1,area3_l2,area3_l3,area3_h1,area3_h2,area3_h3
   integer vol_l1,vol_l2,vol_l3,vol_h1,vol_h2,vol_h3
   integer src_l1,src_l2,src_l3,src_h1,src_h2,src_h3
-  integer gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3
   double precision   uin(  uin_l1:uin_h1,    uin_l2:uin_h2,     uin_l3:uin_h3,  NVAR)
   double precision  uout( uout_l1:uout_h1,  uout_l2:uout_h2,   uout_l3:uout_h3, NVAR)
   double precision ugdnvx_out(ugdnvx_l1:ugdnvx_h1,ugdnvx_l2:ugdnvx_h2,ugdnvx_l3:ugdnvx_h3)
   double precision ugdnvy_out(ugdnvy_l1:ugdnvy_h1,ugdnvy_l2:ugdnvy_h2,ugdnvy_l3:ugdnvy_h3)
   double precision ugdnvz_out(ugdnvz_l1:ugdnvz_h1,ugdnvz_l2:ugdnvz_h2,ugdnvz_l3:ugdnvz_h3)
   double precision   src(  src_l1:src_h1,    src_l2:src_h2,     src_l3:src_h3,  NVAR)
-  double precision  grav( gv_l1:gv_h1,  gv_l2:gv_h2,   gv_l3:gv_h3,    3)
   double precision flux1(flux1_l1:flux1_h1,flux1_l2:flux1_h2, flux1_l3:flux1_h3,NVAR)
   double precision flux2(flux2_l1:flux2_h1,flux2_l2:flux2_h2, flux2_l3:flux2_h3,NVAR)
   double precision flux3(flux3_l1:flux3_h1,flux3_l2:flux3_h2, flux3_l3:flux3_h3,NVAR)
@@ -67,12 +58,9 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   double precision area2(area2_l1:area2_h1,area2_l2:area2_h2, area2_l3:area2_h3)
   double precision area3(area3_l1:area3_h1,area3_l2:area3_h2, area3_l3:area3_h3)
   double precision vol(vol_l1:vol_h1,vol_l2:vol_h2, vol_l3:vol_h3)
-  double precision delta(3),dt,time,courno,E_added_flux,E_added_grav,E_added_rot,E_added_sponge
+  double precision delta(3),dt,time,courno,E_added_flux
   double precision mass_added,eint_added,eden_added
   double precision xmom_added_flux,ymom_added_flux,zmom_added_flux
-  double precision xmom_added_grav,ymom_added_grav,zmom_added_grav
-  double precision xmom_added_rot,ymom_added_rot,zmom_added_rot
-  double precision xmom_added_sponge,ymom_added_sponge,zmom_added_sponge
 
   ! Automatic arrays for workspace
   double precision, pointer:: q(:,:,:,:)
@@ -83,7 +71,6 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   double precision, pointer:: div(:,:,:)
   double precision, pointer:: pdivu(:,:,:)
   double precision, pointer:: srcQ(:,:,:,:)
-  double precision, pointer:: rot(:,:,:,:)
   
   double precision dx,dy,dz
   integer ngq,ngf
@@ -108,8 +95,7 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   call bl_allocate(   div, lo(1),hi(1)+1,lo(2),hi(2)+1,lo(3),hi(3)+1)  
   call bl_allocate( pdivu, lo(1),hi(1)  ,lo(2),hi(2)  ,lo(3),hi(3)  )
 
-  call bl_allocate(  srcQ, lo(1)-1,hi(1)+1,lo(2)-1,hi(2)+1,lo(3)-1,hi(3)+1,1,QVAR)
-  call bl_allocate(   rot, lo(1)-ngq,hi(1)+ngq,lo(2)-ngq,hi(2)+ngq,lo(3)-ngq,hi(3)+ngq,1,3)
+  call bl_allocate(  srcQ, q_l1,q_h1,q_l2,q_h2,q_l3,q_h3,1,QVAR)
   
   dx = delta(1)
   dy = delta(2)
@@ -123,27 +109,12 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   call ctoprim(lo,hi,uin,uin_l1,uin_l2,uin_l3,uin_h1,uin_h2,uin_h3, &
                q,c,gamc,csml,flatn,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3, &
                src,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-               srcQ,lo(1)-1,lo(2)-1,lo(3)-1,hi(1)+1,hi(2)+1,hi(3)+1, &
+               srcQ,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3, &
                courno,dx,dy,dz,dt,ngq,ngf)
-
-  ! Compute the rotation field, which depends on position and velocity
-
-  if (do_rotation .eq. 1) then
-     
-     call fill_rotation_field(rot,lo(1)-ngq,lo(2)-ngq,lo(3)-ngq, &
-                              hi(1)+ngq,hi(2)+ngq,hi(3)+ngq, &
-                              q,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3, &
-                              lo,hi,delta)
-
-  else
-     rot = 0.d0
-  endif
 
   ! Compute hyperbolic fluxes using unsplit Godunov
   call umeth3d(q,c,gamc,csml,flatn,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3, &
-               srcQ,lo(1)-1,lo(2)-1,lo(3)-1,hi(1)+1,hi(2)+1,hi(3)+1, &
-               grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
-               rot,lo(1)-ngq,lo(2)-ngq,lo(3)-ngq,hi(1)+ngq,hi(2)+ngq,hi(3)+ngq, &
+               srcQ,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3, &
                lo(1),lo(2),lo(3),hi(1),hi(2),hi(3),dx,dy,dz,dt, &
                flux1,flux1_l1,flux1_l2,flux1_l3,flux1_h1,flux1_h2,flux1_h3, &
                flux2,flux2_l1,flux2_l2,flux2_l3,flux2_h1,flux2_h2,flux2_h3, &
@@ -192,29 +163,6 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
                                 lo,hi)
   end if
 
-  if (do_grav .eq. 1) then
-     call add_grav_source(uin,uin_l1,uin_l2,uin_l3,uin_h1,uin_h2,uin_h3, &
-                          uout,uout_l1,uout_l2,uout_l3,uout_h1,uout_h2,uout_h3, &
-                          grav, gv_l1, gv_l2, gv_l3, gv_h1, gv_h2, gv_h3, &
-                          lo,hi,dt,E_added_grav,&
-                          xmom_added_grav,ymom_added_grav,zmom_added_grav)
-  endif
-
-  if (do_rotation .eq. 1) then
-     call add_rot_source(uin,uin_l1,uin_l2,uin_l3,uin_h1,uin_h2,uin_h3, &
-                         uout,uout_l1,uout_l2,uout_l3,uout_h1,uout_h2,uout_h3, &
-                         lo,hi,(/dx,dy,dz/),dt,E_added_rot, &
-                         xmom_added_rot,ymom_added_rot,zmom_added_rot)
-  endif
-
-  ! Impose sponge
-  if (do_sponge .eq. 1) then
-     call sponge(uout,uout_l1,uout_l2,uout_l3,uout_h1,uout_h2,uout_h3,lo,hi, &
-                 time,dt, &
-                 dx,dy,dz,domlo,domhi, &
-                 E_added_sponge,xmom_added_sponge,ymom_added_sponge,zmom_added_sponge)
-  end if
-
   call bl_deallocate(     q)
   call bl_deallocate(  gamc)
   call bl_deallocate( flatn)
@@ -225,7 +173,6 @@ subroutine ca_umdrv(is_finest_level,time,lo,hi,domlo,domhi, &
   call bl_deallocate( pdivu)
 
   call bl_deallocate(  srcQ)
-  call bl_deallocate(   rot)
 
 end subroutine ca_umdrv
 
@@ -268,90 +215,6 @@ subroutine ca_check_initial_species(lo,hi,&
   enddo
   
 end subroutine ca_check_initial_species
-
-! :: ----------------------------------------------------------
-! :: Volume-weight average the fine grid data onto the coarse
-! :: grid.  Overlap is given in coarse grid coordinates.
-! ::
-! :: INPUTS / OUTPUTS:
-! ::  crse      <=  coarse grid data
-! ::  nvar	 => number of components in arrays
-! ::  fine       => fine grid data
-! ::  lo,hi      => index limits of overlap (crse grid)
-! ::  lrat       => refinement ratio
-! ::
-! :: NOTE:
-! ::  Assumes all data cell centered
-! :: ----------------------------------------------------------
-! ::
-subroutine ca_avgdown(crse,c_l1,c_l2,c_l3,c_h1,c_h2,c_h3,nvar, &
-                      cv,cv_l1,cv_l2,cv_l3,cv_h1,cv_h2,cv_h3, &
-                      fine,f_l1,f_l2,f_l3,f_h1,f_h2,f_h3, &
-                      fv,fv_l1,fv_l2,fv_l3,fv_h1,fv_h2,fv_h3,lo,hi,lrat)
-
-  use bl_constants_module
-  
-  implicit none
-
-  integer c_l1,c_l2,c_l3,c_h1,c_h2,c_h3
-  integer cv_l1,cv_l2,cv_l3,cv_h1,cv_h2,cv_h3
-  integer f_l1,f_l2,f_l3,f_h1,f_h2,f_h3
-  integer fv_l1,fv_l2,fv_l3,fv_h1,fv_h2,fv_h3
-  integer lo(3), hi(3)
-  integer nvar, lrat(3)
-  double precision crse(c_l1:c_h1,c_l2:c_h2,c_l3:c_h3,nvar)
-  double precision cv(cv_l1:cv_h1,cv_l2:cv_h2,cv_l3:cv_h3)
-  double precision fine(f_l1:f_h1,f_l2:f_h2,f_l3:f_h3,nvar)
-  double precision fv(fv_l1:fv_h1,fv_l2:fv_h2,fv_l3:fv_h3)
-  
-  integer i, j, k, n, ic, jc, kc, ioff, joff, koff
-  double precision   volfrac
-  
-  do n = 1, nvar
-     !
-     ! Set coarse grid to zero on overlap.
-     !
-     do kc = lo(3), hi(3)
-        do jc = lo(2), hi(2)
-           do ic = lo(1), hi(1)
-              crse(ic,jc,kc,n) = ZERO
-           enddo
-        enddo
-     enddo
-     !
-     ! Sum fine data.
-     !
-     do koff = 0, lrat(3)-1
-        do kc = lo(3),hi(3)
-           k = kc*lrat(3) + koff
-           do joff = 0, lrat(2)-1
-              do jc = lo(2), hi(2)
-                 j = jc*lrat(2) + joff
-                 do ioff = 0, lrat(1)-1
-                    do ic = lo(1), hi(1)
-                       i = ic*lrat(1) + ioff
-                       crse(ic,jc,kc,n) = crse(ic,jc,kc,n) + fine(i,j,k,n)
-                    enddo
-                 enddo
-              enddo
-           enddo
-        enddo
-     enddo
-     !
-     ! Divide out by volume weight.
-     !
-     volfrac = ONE/dble(lrat(1)*lrat(2)*lrat(3))
-     do kc = lo(3), hi(3)
-        do jc = lo(2), hi(2)
-           do ic = lo(1), hi(1)
-              crse(ic,jc,kc,n) = volfrac*crse(ic,jc,kc,n)
-           enddo
-        enddo
-     enddo
-     
-  enddo
-
-end subroutine ca_avgdown
 
 ! ::
 ! :: ----------------------------------------------------------

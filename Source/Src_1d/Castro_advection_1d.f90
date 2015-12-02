@@ -28,7 +28,6 @@ contains
   subroutine umeth1d(lo,hi,domlo,domhi, &
                      q,c,gamc,csml,flatn,qd_l1,qd_h1, &
                      srcQ,src_l1,src_h1, &
-                     grav, gv_l1, gv_h1, &
                      ilo,ihi,dx,dt, &
                      flux ,   fd_l1,   fd_h1, &
                      pgdnv,pgdnv_l1,pgdnv_h1, &
@@ -49,7 +48,6 @@ contains
     integer fd_l1,fd_h1
     integer pgdnv_l1,pgdnv_h1
     integer ugdnv_l1,ugdnv_h1
-    integer gv_l1,gv_h1
     integer ilo,ihi
     double precision dx, dt
     double precision     q(   qd_l1:qd_h1,QVAR)
@@ -59,7 +57,6 @@ contains
     double precision     c(   qd_l1:qd_h1)
     double precision  flux(fd_l1   :fd_h1,NVAR)
     double precision  srcQ(src_l1  :src_h1,QVAR)
-    double precision  grav(gv_l1   :gv_h1)
     double precision pgdnv(pgdnv_l1:pgdnv_h1)
     double precision ugdnv(ugdnv_l1:ugdnv_h1)
     double precision dloga(dloga_l1:dloga_h1)
@@ -77,14 +74,12 @@ contains
        call trace_ppm(q,dq,c,flatn,gamc,qd_l1,qd_h1, &
                       dloga,dloga_l1,dloga_h1, &
                       srcQ,src_l1,src_h1, &
-                      grav,gv_l1,gv_h1, &
                       qm,qp,ilo-1,ihi+1, &
                       ilo,ihi,domlo,domhi,dx,dt)
     else
        call trace(q,dq,c,flatn,qd_l1,qd_h1, &
                   dloga,dloga_l1,dloga_h1, &
                   srcQ,src_l1,src_h1, &
-                  grav,gv_l1,gv_h1, &
                   qm,qp,ilo-1,ihi+1, &
                   ilo,ihi,domlo,domhi,dx,dt)
     end if
@@ -120,11 +115,11 @@ contains
 
     use network, only : nspec, naux
     use eos_module
-    use meth_params_module, only : NVAR, URHO, UMX, UEDEN, UEINT, UTEMP, &
-                                   UFA, UFS, UFX, &
-                                   QVAR, QRHO, QU, QREINT, QPRES, QTEMP, QGAME, &
-                                   QFA, QFS, QFX, &
-                                   nadv, small_temp, allow_negative_energy, use_flattening, &
+    use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UEDEN, UEINT, UTEMP, &
+                                   UFS, UFX, &
+                                   QVAR, QRHO, QU, QV, QW, QREINT, QPRES, QTEMP, QGAME, &
+                                   QFS, QFX, &
+                                   npassive, upass_map, qpass_map, small_temp, allow_negative_energy, use_flattening, &
                                    dual_energy_eta1
     use flatten_module
     use bl_constants_module
@@ -149,10 +144,8 @@ contains
     double precision :: dx, dt, courno
     
     integer          :: i
-    integer          :: pt_index(1)
     integer          :: ngp, ngf, loq(1), hiq(1)
-    integer          :: n, nq
-    integer          :: iadv, ispec, iaux
+    integer          :: n, nq, ipassive
     double precision :: courx, courmx
     double precision :: kineng
     
@@ -181,7 +174,15 @@ contains
        end if
        
        q(i,QRHO) = uin(i,URHO)
-       q(i,QU) = uin(i,UMX)/uin(i,URHO)
+
+       ! Load passively advected qunatities into q
+       do ipassive = 1, npassive
+          n  = upass_map(ipassive)
+          nq = qpass_map(ipassive)
+          q(i,nq) = uin(i,n)/q(i,QRHO)
+       enddo
+
+       q(i,QU  ) = uin(i,UMX )/uin(i,URHO)
 
        ! Get the internal energy, which we'll use for determining the pressure.
        ! We use a dual energy formalism. If (E - K) < eta1 and eta1 is suitably small, 
@@ -189,7 +190,7 @@ contains
        ! Therefore we'll use the result of the separately updated internal energy equation.
        ! Otherwise, we'll set e = E - K.
 
-       kineng = HALF * q(i,QRHO) * q(i,QU)**2
+       kineng = HALF * q(i,QRHO) * sum(q(i,QU:QW)**2)
 
        if ( (uin(i,UEDEN) - kineng) / uin(i,UEDEN) .lt. dual_energy_eta1) then
           q(i,QREINT) = (uin(i,UEDEN) - kineng) / q(i,QRHO)
@@ -201,31 +202,8 @@ contains
 
     enddo
     
-    ! Load advected quatities, c, into q, assuming they arrived in uin as rho.c
-    do iadv = 1, nadv
-       n  = UFA + iadv - 1
-       nq = QFA + iadv - 1
-       q(loq(1):hiq(1),nq) = uin(loq(1):hiq(1),n)/q(loq(1):hiq(1),QRHO)
-    enddo
-    
-    ! Load species, c, into q, assuming they arrived in uin as rho.c
-    do ispec = 1, nspec
-       n  = UFS + ispec - 1
-       nq = QFS + ispec - 1
-       q(loq(1):hiq(1),nq) = uin(loq(1):hiq(1),n)/q(loq(1):hiq(1),QRHO)
-    enddo
-    
-    ! Load auxiliary variables which are needed in the EOS
-    do iaux = 1, naux
-       n  = UFX + iaux - 1
-       nq = QFX + iaux - 1
-       q(loq(1):hiq(1),nq) = uin(loq(1):hiq(1),n)/q(loq(1):hiq(1),QRHO)
-    enddo
-    
     ! Get gamc, p, T, c, csml using q state
     do i = loq(1), hiq(1)
-       
-       pt_index(1) = i
        
        eos_state % T   = q(i,QTEMP)
        eos_state % rho = q(i,QRHO)
@@ -238,7 +216,7 @@ contains
           q(i,QTEMP) = small_temp
           eos_state % T = q(i,QTEMP)
           
-          call eos(eos_input_rt, eos_state, pt_index = pt_index)
+          call eos(eos_input_rt, eos_state)
           q(i,QREINT) = eos_state % e
           
           if (q(i,QREINT) .lt. ZERO) then
@@ -252,7 +230,7 @@ contains
        
        eos_state % e = q(i,QREINT)
        
-       call eos(eos_input_re, eos_state, pt_index = pt_index)
+       call eos(eos_input_re, eos_state)
        
        q(i,QTEMP)  = eos_state % T
        q(i,QREINT) = eos_state % e
@@ -273,7 +251,7 @@ contains
     enddo
     
     ! compute srcQ terms
-    do i = lo(1)-1, hi(1)+1
+    do i = loq(1), hiq(1)
        srcQ(i,QRHO   ) = src(i,URHO)
        srcQ(i,QU     ) = (src(i,UMX) - q(i,QU) * srcQ(i,QRHO)) / q(i,QRHO)
        srcQ(i,QREINT ) = src(i,UEDEN) - q(i,QU) * src(i,UMX) + HALF * q(i,QU)**2 * srcQ(i,QRHO)
@@ -281,16 +259,10 @@ contains
             dpdrho(i) * srcQ(i,QRHO)! - &
        !              sum(dpdX_er(i,:)*(src(i,UFS:UFS+nspec-1) - q(i,QFS:QFS+nspec-1)*srcQ(i,QRHO)))/q(i,QRHO)
        
-       do ispec=1,nspec
-          srcQ(i,QFS+ispec-1) = ( src(i,UFS+ispec-1) - q(i,QFS+ispec-1) * srcQ(i,QRHO) ) / q(i,QRHO)
-       end do
-       
-       do iaux=1,naux
-          srcQ(i,QFX+iaux-1) = ( src(i,UFX+iaux-1) - q(i,QFX+iaux-1) * srcQ(i,QRHO) ) / q(i,QRHO)
-       end do
-       
-       do iadv=1,nadv
-          srcQ(i,QFA+iadv-1) = ( src(i,UFA+iadv-1) - q(i,QFA+iadv-1) * srcQ(i,QRHO) ) / q(i,QRHO)
+       do ipassive=1, npassive
+          n  = upass_map(ipassive)
+          nq = qpass_map(ipassive)
+          srcQ(i,nq) = ( src(i,n) - q(i,nq) * srcQ(i,QRHO) ) / q(i,QRHO)
        end do
 
     end do
@@ -317,10 +289,12 @@ contains
     if (use_flattening == 1) then
        loq(1)=lo(1)-ngf
        hiq(1)=hi(1)+ngf
-       call uflaten(loq,hiq, &
+       call uflaten((/ loq(1), 0, 0 /), (/ hiq(1), 0, 0 /), &
                     q(q_l1,QPRES), &
                     q(q_l1,QU), &
-                    flatn,q_l1,q_h1)
+                    q(q_l1,QV), &
+                    q(q_l1,QW), &
+                    flatn,(/ q_l1, 0, 0 /), (/ q_h1, 0, 0 /))
     else
        flatn = ONE
     endif
@@ -338,16 +312,15 @@ contains
                     uout, uout_l1 ,uout_h1, &
                     pgdnv,pgdnv_l1,pgdnv_h1, &
                     src,  src_l1,  src_h1, &
-                    grav, grav_l1, grav_h1, &
                     flux, flux_l1, flux_h1, &
                     area,area_l1,area_h1, &
                     vol,vol_l1,vol_h1, &
-                    div,pdivu,lo,hi,dx,dt)
+                    div,pdivu,lo,hi,dx,dt,E_added_flux, &
+                    xmom_added_flux,ymom_added_flux,zmom_added_flux)
 
-    use network, only : nspec, naux
     use eos_module
-    use meth_params_module, only : difmag, NVAR, URHO, UMX, UEDEN, UEINT, UTEMP, &
-                                   UFS, UFX, &
+    use meth_params_module, only : difmag, NVAR, URHO, UMX, UMY, UMZ, &
+                                   UEDEN, UEINT, UTEMP, UFS, UFX, &
                                    normalize_species
     use bl_constants_module
 
@@ -357,7 +330,6 @@ contains
     integer  uout_l1, uout_h1
     integer pgdnv_l1,pgdnv_h1
     integer   src_l1,  src_h1
-    integer  grav_l1, grav_h1
     integer  flux_l1, flux_h1
     integer  area_l1, area_h1
     integer   vol_l1,  vol_h1
@@ -365,24 +337,24 @@ contains
     double precision  uout(uout_l1:uout_h1,NVAR)
     double precision pgdnv(pgdnv_l1:pgdnv_h1)
     double precision   src(  src_l1:  src_h1,NVAR)
-    double precision  grav( grav_l1: grav_h1)
     double precision  flux( flux_l1: flux_h1,NVAR)
     double precision  area( area_l1: area_h1)
     double precision    vol(vol_l1:vol_h1)
     double precision    div(lo(1):hi(1)+1)
     double precision  pdivu(lo(1):hi(1)  )
     double precision dx, dt
+    double precision E_added_flux
+    double precision xmom_added_flux, ymom_added_flux, zmom_added_flux
     
     integer          :: i, n
     double precision :: div1, dpdx
-    double precision :: SrU,Up,SrE
     
     ! Normalize the species fluxes
     if (normalize_species .eq. 1) &
          call normalize_species_fluxes(flux,flux_l1,flux_h1,lo,hi)
     
     do n = 1, NVAR
-       if ( n.eq.UTEMP ) then
+       if ( n.eq.UTEMP .or. n.eq.UMY .or. n.eq.UMZ ) then
           flux(:,n) = ZERO
        else
           do i = lo(1),hi(1)+1
@@ -395,15 +367,30 @@ contains
     enddo
     
     do n = 1, NVAR
-       if ( n.eq.UTEMP) then
+       if ( n.eq.UTEMP ) then
           do i = lo(1),hi(1)
              uout(i,n) = uin(i,n)
           enddo
        else
           do i = lo(1),hi(1)
              uout(i,n) = uin(i,n) &
-                  + ( flux(i,n) - flux(i+1,n) ) / vol(i) &
-                  + dt * src(i,n)
+                  + ( flux(i,n) - flux(i+1,n) ) / vol(i)
+
+             ! Add up some diagnostic quantities.
+                      
+             if (n .eq. UMX) then
+                xmom_added_flux = xmom_added_flux + &
+                     ( flux(i,n) - flux(i+1,n) ) / vol(i)
+             else if (n .eq. UMY) then
+                ymom_added_flux = ymom_added_flux + &
+                     ( flux(i,n) - flux(i+1,n) ) / vol(i)
+             else if (n .eq. UMZ) then
+                zmom_added_flux = zmom_added_flux + &
+                     ( flux(i,n) - flux(i+1,n) ) / vol(i)
+             else if (n .eq. UEDEN) then
+                E_added_flux = E_added_flux + &
+                     ( flux(i,n) - flux(i+1,n) ) / vol(i)
+             endif
           enddo
        end if
     enddo
@@ -420,25 +407,6 @@ contains
     ! Add source term to (rho e)
     do i = lo(1),hi(1)
        uout(i,UEINT) = uout(i,UEINT)  - dt * pdivu(i)
-    enddo
-    
-    ! Add gravitational source terms to momentum and energy equations 
-    do i = lo(1),hi(1)
-       
-       Up  = uin(i,UMX) / uin(i,URHO)
-       SrU = uin(i,URHO) * grav(i)
-       
-       ! This doesn't work
-       ! SrE = SrU*(Up + SrU*dt/(TWO*rho))
-       
-       ! This works 
-       ! SrE = SrU*Up 
-       
-       SrE = uin(i,UMX ) * grav(i)
-       
-       uout(i,UMX  ) = uout(i,UMX  ) + dt * SrU
-       uout(i,UEDEN) = uout(i,UEDEN) + dt * SrE
-       
     enddo
     
     do i = lo(1),hi(1)+1
@@ -493,7 +461,7 @@ contains
                                       lo, hi, mass_added, eint_added, eden_added, verbose)
     use network, only : nspec, naux
     use meth_params_module, only : NVAR, URHO, UMX, UEDEN, UEINT, UTEMP, &
-                                   UFS, UFX, UFA, small_dens, small_temp, nadv
+                                   UFS, UFX, small_dens, small_temp, npassive, upass_map
     use bl_constants_module
     use eos_type_module, only : eos_t
     use eos_module, only : eos_input_rt, eos
@@ -508,7 +476,7 @@ contains
     double precision :: mass_added, eint_added, eden_added
     
     ! Local variables
-    integer          :: i,ii,n
+    integer          :: i,ii,n,ipassive
     double precision :: max_dens
     integer          :: i_set
     double precision :: initial_mass, final_mass
@@ -561,19 +529,16 @@ contains
 
           if (max_dens < small_dens) then
 
-             do n = UFS, UFS+nspec-1
-                uout(i,n) = uout(i_set,n) * (small_dens / uout(i,URHO))
-             end do
-             do n = UFX, UFX+naux-1
-                uout(i,n) = uout(i_set,n) * (small_dens / uout(i,URHO))
-             end do
-             do n = UFA, UFA+nadv-1
-                uout(i,n) = uout(i_set,n) * (small_dens / uout(i,URHO))
+             i_set = i
+             
+             do ipassive = 1, npassive
+                n = upass_map(ipassive)
+                uout(i,n) = uout(i,n) * (small_dens / uout(i,URHO))
              end do
 
              eos_state % rho = small_dens
              eos_state % T   = small_temp
-             eos_state % xn  = uout(i,UFS:UFS+nspec-1) / uout(i,URHO)
+             eos_state % xn  = uout(i,UFS:UFS+nspec-1) / small_dens
 
              call eos(eos_input_rt, eos_state)
 
@@ -609,13 +574,8 @@ contains
           uout(i,UEDEN) = uout(i_set,UEDEN)
           uout(i,UMX  ) = uout(i_set,UMX  )
 
-          do n = UFS, UFS+nspec-1
-             uout(i,n) = uout(i_set,n)
-          end do
-          do n = UFX, UFX+naux-1
-             uout(i,n) = uout(i_set,n)
-          end do
-          do n = UFA, UFA+nadv-1
+          do ipassive = 1, npassive
+             n = upass_map(ipassive)
              uout(i,n) = uout(i_set,n)
           end do
           

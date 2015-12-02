@@ -1,60 +1,3 @@
-
-! :: ----------------------------------------------------------
-! :: Average the fine grid phi onto the coarse
-! :: grid.  Overlap is given in coarse grid coordinates.
-! :: Note this differs from ca_avgdown in that there is no volume weighting.
-! ::
-! :: INPUTS / OUTPUTS:
-! ::  crse      <=  coarse grid data
-! ::  fine       => fine grid data
-! ::  lo,hi      => index limits of overlap (crse grid)
-! ::  lrat       => refinement ratio
-! ::
-! :: NOTE:
-! ::  Assumes all data cell centered
-! :: ----------------------------------------------------------
-! ::
-      subroutine ca_avgdown_phi (crse,c_l1,c_h1, &
-                                 fine,f_l1,f_h1, &
-                                 lo,hi,lrat)
-
-      use bl_constants_module
-
-      implicit none
-
-      integer c_l1,c_h1
-      integer f_l1,f_h1
-      integer lo(1), hi(1)
-      integer lrat(1)
-      double precision crse(c_l1:c_h1)
-      double precision fine(f_l1:f_h1)
-
-      integer i, ic, ioff
-      double precision volfrac
-
-!
-!     ::::: set coarse grid to zero on overlap
-!
-      do ic = lo(1), hi(1)
-         crse(ic) = ZERO
-      enddo
-!
-!         ::::: sum fine data
-!
-      do ioff = 0, lrat(1)-1
-         do ic = lo(1), hi(1)
-            i = ic*lrat(1) + ioff
-            crse(ic) = crse(ic) + fine(i)
-         enddo
-      enddo
-
-      volfrac = ONE/dble(lrat(1))
-      do ic = lo(1), hi(1)
-         crse(ic) = volfrac*crse(ic)
-      enddo
-
-      end subroutine ca_avgdown_phi
-
 ! :::
 ! ::: ----------------------------------------------------------------
 ! :::
@@ -110,68 +53,6 @@
       enddo
 
       end subroutine ca_pc_edge_interp
-
-! :::
-! ::: ----------------------------------------------------------------
-! :::
-
-      subroutine ca_avg_ec_to_cc(lo, hi, bc_lo, bc_hi, symmetry_type, &
-                                 cc, ccl1, cch1, ecx, ecxl1, ecxh1, &
-                                 dx, problo, coord_type) 
-
-      use bl_constants_module
-
-      implicit none
-
-      integer          :: lo(1),hi(1)
-      integer          :: symmetry_type
-      integer          :: coord_type
-      integer          :: bc_lo(1),bc_hi(1)
-      integer          :: ccl1, cch1
-      integer          :: ecxl1, ecxh1
-      double precision :: cc(ccl1:cch1)
-      double precision :: ecx(ecxl1:ecxh1)
-      double precision :: dx(1), problo(1)
-
-      ! Local variables
-      integer          :: i
-      double precision :: rlo,rhi,rcen
-
-      ! Cartesian
-      if (coord_type .eq. 0) then
-
-         do i=lo(1),hi(1)
-            cc(i) = HALF * ( ecx(i+1) + ecx(i) )
-         enddo
-
-      ! R-Z
-      else if (coord_type .eq. 1) then
-
-         do i=lo(1),hi(1)
-            rlo = problo(1) + (dble(i)  )*dx(1)
-            rhi = problo(1) + (dble(i)+1)*dx(1)
-            rcen = HALF * (rlo + rhi)
-            cc(i) = HALF * ( rhi*ecx(i+1) + rlo*ecx(i) ) / rcen
-         enddo
-
-      ! Spherical
-      else if (coord_type .eq. 2) then
-
-         do i=lo(1),hi(1)
-            rlo = problo(1) + (dble(i)  )*dx(1)
-            rhi = problo(1) + (dble(i)+1)*dx(1)
-            rcen = HALF * (rlo + rhi)
-            cc(i) = HALF * ( rhi**2 * ecx(i+1) + rlo**2 * ecx(i) ) / rcen**2
-         enddo
-
-      else 
-
-         print *,'Bogus coord_type in avg_ec_to_cc ' ,coord_type
-         call bl_error("Error:: Gravity_1d.f90 :: ca_avg_ec_to_cc")
-
-      end if
-
-      end subroutine ca_avg_ec_to_cc
 
 ! :::
 ! ::: ----------------------------------------------------------------
@@ -239,67 +120,137 @@
 ! ::: ----------------------------------------------------------------
 ! :::
 
-      subroutine ca_average_ec ( &
-           fx, fxl1, fxh1, &
-           cx, cxl1, cxh1, &
-           lo, hi, rr, idir)
- 
-      implicit none
-      integer lo(1),hi(1)
-      integer fxl1, fxh1
-      integer cxl1, cxh1
-      double precision fx(fxl1:fxh1)
-      double precision cx(cxl1:cxh1)
-      integer rr(1), idir
- 
-      integer i,facx
-      facx = rr(1)
+      ! Note that we come into this routine with the full 1D density
+      ! array, so we can compute the gravity in one pass.
 
-      ! lo(1)..hi(1) are edge base indice
-      do i = lo(1), hi(1)
-         cx(i) = fx(facx*i)
-      end do
- 
-      end subroutine ca_average_ec
-
-! :::
-! ::: ----------------------------------------------------------------
-! :::
-
-      subroutine ca_compute_1d_grav(rho, r_l1, r_h1, grav, dx, problo)
+      subroutine ca_compute_1d_grav(rho, r_l1, r_h1, lo, hi, grav, phi, dx, problo)
 
       use fundamental_constants_module, only : Gconst
       use bl_constants_module
+      use meth_params_module, only : get_g_from_phi
 
       implicit none
 
       integer         , intent(in   ) :: r_l1, r_h1
+      integer         , intent(in   ) :: lo,   hi
       double precision, intent(in   ) ::  rho(r_l1:r_h1)
       double precision, intent(  out) :: grav(r_l1:r_h1)
+      double precision, intent(  out) ::  phi(r_l1:r_h1)
       double precision, intent(in   ) :: dx, problo(1)
 
+      ! We need a temporary arrays to do edge-based indexing for phi.
+      
+      double precision :: phi_temp(r_l1-1:r_h1+1) ! Cell-centered
+      double precision :: phi_edge(r_l1-2:r_h1+2) ! Edge-centered
+      
       double precision, parameter ::  fourthirdspi = FOUR3RD * M_PI
-      double precision :: rc,rlo,mass_encl,halfdx
-      integer          :: i,n
+      double precision :: rc,rlo,mass_encl,halfdx,dm,rloj,rcj,rhij
+      integer          :: i,j
 
       halfdx = HALF * dx
 
-      do i = 0,r_h1
-         rlo = problo(1) + dble(i) * dx
-         rc  = rlo + halfdx
-         if (i.gt.0) then
-            mass_encl = mass_encl + fourthirdspi * halfdx * (rlo**2 + rlo*(rlo-halfdx) + (rlo-halfdx)**2) * rho(i-1) + &
-                                    fourthirdspi * halfdx * ( rc**2 +  rc* rlo         +  rlo**2        ) * rho(i  )
-         else
-            mass_encl = fourthirdspi * halfdx * (rc**2 + rc*rlo +  rlo**2) * rho(i)
-         end if
-         grav(i) = -Gconst * mass_encl / rc**2
-      enddo
+      if (get_g_from_phi) then
 
-      if (problo(1) .eq. ZERO) then
-         do i = r_l1,-1
-             grav(i) = -grav(-i-1)
-         end do
-      end if
+         phi_edge = ZERO
+         phi_temp = ZERO
+         grav = ZERO
 
+         ! First do all the zones in the physical domain and in the
+         ! upper ghost cells, using the standard approach of integrating
+         ! the Green's function for the potential.
+         
+         do i = lo, r_h1+2
+
+            rc = problo(1) + dble(i) * dx
+
+            mass_encl = ZERO                  
+            
+            do j = lo, hi
+
+               rloj = problo(1) + dble(j) * dx
+               rcj = rloj + halfdx
+               rhij = rcj + halfdx
+
+               dm = fourthirdspi * (rhij**3 - rloj**3) * rho(j)
+
+               mass_encl = mass_encl + dm
+               
+               ! If the mass shell is interior to us, the shell theorem
+               ! (or an expansion in in the potential) tells us
+               ! that its contribution to the potential is given by
+               ! a point mass located at the origin.
+                  
+               if (j .lt. i) then
+
+                  phi_edge(i) = phi_edge(i) + Gconst * dm / rc
+
+               ! If the mass shell is exterior, the potential is G * M / R where
+               ! R is the radius of the shell for a point mass. More generally for
+               ! a thick spherical shell of inner radius a and outer radius b, the
+               ! potential inside is given by G * M * 3 * (a + b) / (2 * (a^2 + a* b + b^2)).
+                     
+               else
+
+                  phi_edge(i) = phi_edge(i) + Gconst * dm * (THREE / TWO) * (rloj + rhij) / (rloj**2 + rloj * rhij + rhij**2)
+
+               endif
+
+            enddo
+
+         enddo
+
+         ! Average from cell edges to cell centers.
+
+         do i = lo, r_h1+1
+
+            phi_temp(i) = HALF * (phi_edge(i) + phi_edge(i+1))
+
+         enddo
+
+         ! We want to do even reflection of phi for the lower ghost cells on a
+         ! symmetry axis, to ensure that the gradient at r == 0 vanishes.
+         
+         if (problo(1) .eq. ZERO) then
+            do i = r_l1-1, lo-1
+               phi_temp(i) = phi_temp(-i-1)
+            enddo
+         endif
+
+         ! Now that we have phi, construct g by taking the gradient.
+         ! We use simple second-order centered differencing.
+
+         do i = r_l1, r_h1
+
+            grav(i) = (phi_temp(i+1) - phi_temp(i-1)) / (TWO * dx)
+
+         enddo
+
+         phi = phi_temp(r_l1:r_h1)
+
+      else
+
+         mass_encl = ZERO      
+         
+         do i = 0, r_h1
+            rlo = problo(1) + dble(i) * dx
+            rc  = rlo + halfdx
+            if (i .gt. 0) then
+               dm = fourthirdspi * halfdx * (rlo**2 + rlo*(rlo-halfdx) + (rlo-halfdx)**2) * rho(i-1) + &
+                    fourthirdspi * halfdx * ( rc**2 +  rc* rlo         +  rlo**2        ) * rho(i  )
+            else
+               dm = fourthirdspi * halfdx * (rc**2 + rc*rlo +  rlo**2) * rho(i)
+            endif
+            mass_encl = mass_encl + dm
+            grav(i) = -Gconst * mass_encl / rc**2
+
+         enddo
+
+         if (problo(1) .eq. ZERO) then
+            do i = r_l1,-1
+               grav(i) = -grav(-i-1)
+            enddo
+         endif
+
+      endif
+         
       end subroutine ca_compute_1d_grav

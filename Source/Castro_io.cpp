@@ -83,12 +83,104 @@ Castro::restart (Amr&     papa,
 
     AmrLevel::restart(papa,is,bReadSpecial);
 
-    if (version == 0) { // old chcekpoint w/o PhiGrav_Type
+    if (version == 0) { // old checkpoint without PhiGrav_Type
 #ifdef GRAVITY
-	state[PhiGrav_Type].restart(desc_lst[PhiGrav_Type], state[Gravity_Type]);
+      state[PhiGrav_Type].restart(desc_lst[PhiGrav_Type], state[Gravity_Type]);
 #endif      
     }
 
+    if (version < 3) { // old checkpoint without Source_Type
+      state[Source_Type].restart(desc_lst[Source_Type], state[State_Type]);
+    }
+
+    // For versions < 2, we didn't store all three components
+    // of the momenta in the checkpoint when doing 1D or 2D simulations.
+    // So the state data that was read in will be a MultiFab with a
+    // number of components that doesn't include the extra momenta,
+    // which is incompatible with what we want. Our strategy is therefore
+    // to create a new MultiFab with the right number of components, and
+    // copy the data from the old MultiFab into the new one in the correct
+    // slots. Then we'll swap pointers so that the new MultiFab is where
+    // the new state data lives, and delete the old data as we no longer need it.
+    
+#if (BL_SPACEDIM < 3)    
+
+    if (version < 2) {
+
+      int ns = desc_lst[State_Type].nComp();
+      int ng = desc_lst[State_Type].nExtra();
+      MultiFab* new_data = new MultiFab(grids,ns,ng,Fab_allocate);
+      MultiFab& chk_data = get_state_data(State_Type).newData();
+
+#if (BL_SPACEDIM == 1)      
+      
+      // In 1D, we can copy everything below the y-momentum as normal,
+      // and everything above the z-momentum as normal but shifted by
+      // two components. The y- and z-momentum are zeroed out.
+
+      for (int n = 0; n < ns; n++) {
+	if (n < Ymom)
+	  MultiFab::Copy(*new_data, chk_data, n,   n, 1, ng);
+	else if (n == Ymom || n == Zmom)
+	  new_data->setVal(0.0, n, 1, ng);
+	else
+	  MultiFab::Copy(*new_data, chk_data, n-2, n, 1, ng);
+      }
+
+#elif (BL_SPACEDIM == 2)
+      
+      // Strategy is the same in 2D but we only need to worry about
+      // shifting by one component.
+
+      for (int n = 0; n < ns; n++) {
+	if (n < Zmom)
+	  MultiFab::Copy(*new_data, chk_data, n,   n, 1, ng);
+	else if (n == Zmom)
+	  new_data->setVal(0.0, n, 1, ng);
+	else
+	  MultiFab::Copy(*new_data, chk_data, n-1, n, 1, ng);
+      }
+
+#endif
+
+      // Now swap the pointers.
+
+      get_state_data(State_Type).replaceNewData(new_data);
+
+    }
+ 
+#endif
+
+#ifdef REACTIONS
+    
+    // Get data from the reactions header file.
+
+    max_delta_e = 0.0;
+
+    // Note that we want all grids on the domain to have this value,
+    // so we have all processors read this in. We could do the same
+    // with a broadcast from the IOProcessor but this avoids communication.
+    
+    std::ifstream ReactFile;
+    std::string FullPathReactFile = parent->theRestartFile();
+    FullPathReactFile += "/ReactHeader";
+    ReactFile.open(FullPathReactFile.c_str(), std::ios::in);
+
+    // Maximum change in internal energy in last timestep.
+      
+    ReactFile >> max_delta_e;
+
+    ReactFile.close();
+
+    // Set the energy change to the components of the
+    // reactions MultiFab; it will get overwritten later
+    // but will achieve our desired effect of being
+    // utilized in the first timestep calculation.
+    
+    get_new_data(Reactions_Type).setVal(max_delta_e);
+
+#endif
+	
     buildMetrics();
 
     // get the elapsed CPU time to now;
@@ -215,16 +307,24 @@ Castro::restart (Amr&     papa,
 
        for (MFIter mfi(S_new); mfi.isValid(); ++mfi)
        {
-           RealBox    gridloc = RealBox(grids[mfi.index()],geom.CellSize(),geom.ProbLo()); 
            const Box& bx      = mfi.validbox();
            const int* lo      = bx.loVect();
            const int* hi      = bx.hiVect();
 
            if (! orig_domain.contains(bx)) {
+
+#ifdef DIMENSION_AGNOSTIC
               BL_FORT_PROC_CALL(CA_INITDATA,ca_initdata)
-                (level, cur_time, lo, hi, ns,
-                 BL_TO_FORTRAN(S_new[mfi]), dx,
-                 gridloc.lo(), gridloc.hi());
+                (level, cur_time, ARLIM_3D(lo), ARLIM_3D(hi), ns,
+		 BL_TO_FORTRAN_3D(S_new[mfi]), ZFILL(dx),
+		 ZFILL(geom.ProbLo()), ZFILL(geom.ProbHi()));
+#else
+	      BL_FORT_PROC_CALL(CA_INITDATA,ca_initdata)
+		(level, cur_time, lo, hi, ns,
+		 BL_TO_FORTRAN(S_new[mfi]), dx,
+		 geom.ProbLo(), geom.ProbHi());
+#endif
+
            }
        }
     }
@@ -272,23 +372,22 @@ Castro::restart (Amr&     papa,
 
 void
 Castro::set_state_in_checkpoint (Array<int>& state_in_checkpoint)
-{
-#ifdef GRAVITY
-    if (version == 0) {
-	// We are reading an old checkpoint with no PhiGrav_Type
-	for (int i=0; i<NUM_STATE_TYPE; ++i) {
-	    if (i == PhiGrav_Type) {
-		state_in_checkpoint[i] = 0;
-	    } else {
-		state_in_checkpoint[i] = 1;
-	    }
-	}
-    } else {
-	BoxLib::Error("Castro::set_state_in_checkpoint: should not get here?");
+{ 
+  for (int i=0; i<NUM_STATE_TYPE; ++i)
+    state_in_checkpoint[i] = 1;
+
+  for (int i=0; i<NUM_STATE_TYPE; ++i) {
+#ifdef GRAVITY    
+    if (version == 0 && i == PhiGrav_Type) {
+      // We are reading an old checkpoint with no PhiGrav_Type
+      state_in_checkpoint[i] = 0;
     }
-#else
-    BoxLib::Error("Castro::set_state_in_checkpoint: how did we get here?");
-#endif 
+#endif
+    if (version < 3 && i == Source_Type) {
+      // We are reading an old checkpoint with no Source_Type
+      state_in_checkpoint[i] = 0;
+    }
+  }
 }
 
 void
@@ -317,7 +416,7 @@ Castro::checkPoint(const std::string& dir,
 	    FullPathCastroHeaderFile += "/CastroHeader";
 	    CastroHeaderFile.open(FullPathCastroHeaderFile.c_str(), std::ios::out);
 
-	    CastroHeaderFile << "Checkpoint version: 1" << std::endl;
+	    CastroHeaderFile << "Checkpoint version: 3" << std::endl;
 	    CastroHeaderFile.close();
 	}
 
@@ -350,6 +449,37 @@ Castro::checkPoint(const std::string& dir,
 	}
     }
 
+#ifdef REACTIONS		
+
+    // Write out maximum value of delta_e from reactions data.
+    // First, determine the maximum value of delta_e on all levels.
+
+    if (level == 0)
+      max_delta_e = 0.0;
+
+    // Determine the maximum absolute value of the delta_e component of the reactions MF.
+    // Note that there are NumSpec components starting from 0 corresponding to the species changes.
+	  
+    max_delta_e = std::max(max_delta_e, get_new_data(Reactions_Type).norm0(NumSpec));
+
+    ParallelDescriptor::ReduceRealMax(max_delta_e);
+
+    // Now, write out to the header if we're on the finest level and therefore have checked all entries for delta_e.
+    
+    if (level == parent->finestLevel() && ParallelDescriptor::IOProcessor()) {
+	  
+      std::ofstream ReactHeaderFile;
+      std::string FullPathReactHeaderFile = dir;
+      FullPathReactHeaderFile += "/ReactHeader";
+      ReactHeaderFile.open(FullPathReactHeaderFile.c_str(), std::ios::out);
+
+      ReactHeaderFile << std::scientific << std::setprecision(16) << max_delta_e;
+      ReactHeaderFile.close();
+
+    }
+
+#endif	      
+  
 }
 
 std::string
@@ -381,6 +511,12 @@ Castro::setPlotVariables ()
   }
 #endif
 
+  // Don't add the Source_Type data to the plotfile, we only
+  // want to store it in the checkpoints.
+
+  for (int i = 0; i < desc_lst[Source_Type].nComp(); i++)
+    parent->deleteStatePlotVar(desc_lst[Source_Type].name(i));
+			       
   ParmParse pp("castro");
 
   bool plot_X;

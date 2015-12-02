@@ -1,5 +1,3 @@
-CASTRO_DIR ?= /path/to/Castro
-
 PRECISION  = DOUBLE
 PROFILE    = FALSE
 
@@ -14,14 +12,23 @@ USE_MPI    = FALSE
 
 USE_REACT  = TRUE
 
-# This sets the EOS directory in $(CASTRO_DIR)/EOS
-EOS_dir     := helmeos
+CASTRO_DIR = ../..
 
-# This sets the EOS directory in $(CASTRO_DIR)/Networks
-NETWORK_HOME := $(MICROPHYSICS_DIR)/networks
+ifdef MICROPHYSICS_DIR
+
+# This sets the EOS directory in $(MICROPHYSICS_DIR)/eos
+EOS_dir     := helmholtz
+
+# This sets the EOS directory in $(MICROPHYSICS_DIR)/networks
 Network_dir := aprox13
+
+else
+
+$(error Error: This problem requires the Microphysics repository. Please ensure that you have downloaded it and set $$MICROPHYSICS_DIR appropriately)
+
+endif
 
 Bpack   := ./Make.package
 Blocs   := .
 
-include $(CASTRO_DIR)/Exec/Make.Castro
+include ../Make.Castro

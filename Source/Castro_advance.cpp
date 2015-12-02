@@ -23,6 +23,10 @@
 #include "LevelSet_F.H"
 #endif
 
+#ifdef ROTATION
+#include "Rotation.H"
+#endif
+
 #include <cmath>
 
 using std::string;
@@ -35,7 +39,7 @@ Castro::advance (Real time,
 {
     BL_PROFILE("Castro::advance()");
 
-    Real dt_new = dt;
+   Real dt_new = dt;
 
     if (do_hydro) 
     {
@@ -102,9 +106,7 @@ Castro::advance_hydro (Real time,
     u_gdnv = new MultiFab[BL_SPACEDIM];
     for (int dir = 0; dir < BL_SPACEDIM; dir++)
     {
-	BoxArray edge_grids(grids);
-	edge_grids.surroundingNodes(dir);
-	u_gdnv[dir].define(edge_grids,1,1,Fab_allocate);
+	u_gdnv[dir].define(getEdgeBoxArray(dir),1,1,Fab_allocate);
 	u_gdnv[dir].setVal(1.e40,1);
     }
     
@@ -134,6 +136,18 @@ Castro::advance_hydro (Real time,
         for (int lev = level; lev <= finest_level; lev++) {
             Real dt_lev = parent->dtLevel(lev);
             for (int k = 0; k < NUM_STATE_TYPE; k++) {
+
+	        // The following is a hack to make sure that
+	        // we only ever have new data for the Source_Type;
+	        // by doing a swap now, we'll guarantee that
+	        // allocOldData() does nothing. We do this because
+	        // we never need the old data, so we don't wnat to
+	        // allocate memory for it.
+	      
+	        if (k == Source_Type) {
+		  getLevel(lev).state[k].swapTimeLevels(dt_lev);
+		}
+		
 	        getLevel(lev).state[k].allocOldData();
                 getLevel(lev).state[k].swapTimeLevels(dt_lev);
             }
@@ -158,7 +172,7 @@ Castro::advance_hydro (Real time,
         {
             if (S_old.contains_nan(Density+i,1,0,true))
             {
-                std::cout << "Testing component i for NaNs: " << i << std::endl;
+	        std::cout << "Testing " << desc_lst[State_Type].name(i) << " for NaNs" << std::endl;
                 BoxLib::Abort("S_old has NaNs in this component::advance_hydro()");
             }
         }
@@ -191,13 +205,14 @@ Castro::advance_hydro (Real time,
     }
 #endif
 
-    MultiFab grav_vec_old;
-
 #ifdef GRAVITY
     // Old and new gravitational potential.
        
     MultiFab& phi_old = get_old_data(PhiGrav_Type);
     MultiFab& phi_new = get_new_data(PhiGrav_Type);
+
+    MultiFab& grav_old = get_old_data(Gravity_Type);
+    MultiFab& grav_new = get_new_data(Gravity_Type);
     
     if (do_grav) {
 
@@ -214,12 +229,10 @@ Castro::advance_hydro (Real time,
                gravity->swapTimeLevels(lev);
        }
 
-       grav_vec_old.define(grids,BL_SPACEDIM,NUM_GROW,Fab_allocate); 
-       
        // Define the old gravity vector (aka grad_phi on cell centers)
        //   Note that this is based on the multilevel solve when doing "PoissonGrav".
 
-       gravity->get_old_grav_vector(level,grav_vec_old,time);
+       gravity->get_old_grav_vector(level,grav_old,time);
        
        if (gravity->get_gravity_type() == "PoissonGrav" &&
            gravity->test_results_of_solves() == 1)
@@ -227,11 +240,16 @@ Castro::advance_hydro (Real time,
     }
     else
     {
-       MultiFab& new_grav_mf = get_new_data(Gravity_Type);
-       new_grav_mf.setVal(0.0);
+       grav_new.setVal(0.0);
+       phi_new.setVal(0.0);
     }
 #endif
 
+#ifdef REACTIONS
+    MultiFab& reactions_old = get_old_data(Reactions_Type);
+    MultiFab& reactions_new = get_new_data(Reactions_Type);
+#endif
+    
     // It's possible for interpolation to create very small negative values for
     //   species so we make sure here that all species are non-negative after this point
     enforce_nonnegative_species(S_old);
@@ -240,7 +258,7 @@ Castro::advance_hydro (Real time,
 #ifdef TAU
     MultiFab tau_diff(grids,1,NUM_GROW);
     tau_diff.setVal(0.);
-    define_tau(tau_diff,grav_vec_old,time);
+    define_tau(tau_diff,grav_old,time);
 #endif
 #endif
 
@@ -250,13 +268,12 @@ Castro::advance_hydro (Real time,
 
     // Do level solve at beginning of time step in order to compute the
     //   difference between the multilevel and the single level solutions.
-    if (do_grav)
+    if (do_grav && gravity->get_gravity_type() == "PoissonGrav")
     {
         if (gravity->NoComposite() != 1 && level < parent->finestLevel()) {
 	    comp_minus_level_phi.define(grids,1,0,Fab_allocate);
 	    for (int n=0; n<BL_SPACEDIM; ++n) {
-		comp_minus_level_grad_phi.set(n, 
-		           new MultiFab(BoxArray(grids).surroundingNodes(n),1,0));
+		  comp_minus_level_grad_phi.set(n, new MultiFab(getEdgeBoxArray(n),1,0));
 	    }
 	    gravity->create_comp_minus_level_grad_phi(level,
                             comp_minus_level_phi,comp_minus_level_grad_phi);
@@ -265,12 +282,15 @@ Castro::advance_hydro (Real time,
               std::cout << " " << '\n';
               std::cout << "... old-time level solve at level " << level << '\n';
            }
-           int fill_interior = 0;
-           gravity->solve_for_old_phi(level,phi_old,gravity->get_grad_phi_prev(level),fill_interior);
+	   int is_new = 0;
+           gravity->solve_for_phi(level, 
+				  phi_old,
+				  gravity->get_grad_phi_prev(level),
+				  is_new);
         }
     }
 #endif
-    
+
     //
     // Get pointers to Flux registers, or set pointer to zero if not there.
     //
@@ -303,27 +323,30 @@ Castro::advance_hydro (Real time,
     const Real *dx = geom.CellSize();
     Real courno    = -1.0e+200;
     
-    MultiFab fluxes[BL_SPACEDIM];
+    MultiFab fluxes[3];
 
     // We want to define this on every grid, because we may need the fluxes
     // when computing the source terms later.
 
     for (int j = 0; j < BL_SPACEDIM; j++)
        {
-         BoxArray ba = S_new.boxArray();
-         ba.surroundingNodes(j);
-         fluxes[j].define(ba, NUM_STATE, 0, Fab_allocate);
+         fluxes[j].define(getEdgeBoxArray(j), NUM_STATE, 0, Fab_allocate);
          fluxes[j].setVal(0.0);
        }
+
+    for (int j = BL_SPACEDIM; j < 3; j++)
+      {
+	BoxArray ba = S_new.boxArray();
+	fluxes[j].define(ba, NUM_STATE, 0, Fab_allocate);
+	fluxes[j].setVal(0.0);
+      }
 
 #ifdef SGS
     // We need these even if we are single-level because they are used in the source construction.
     MultiFab sgs_fluxes[BL_SPACEDIM];
     for (int dir = 0; dir < BL_SPACEDIM; dir++)
       {
-	BoxArray ba = S_new.boxArray();
-	ba.surroundingNodes(dir);
-	sgs_fluxes[dir].define(ba, NUM_STATE, 0, Fab_allocate);
+	sgs_fluxes[dir].define(getEdgeBoxArray(dir), NUM_STATE, 0, Fab_allocate);
       }
 #endif
     
@@ -332,83 +355,136 @@ Castro::advance_hydro (Real time,
     MultiFab rad_fluxes[BL_SPACEDIM];
     if (Radiation::rad_hydro_combined) {
       for (int dir = 0; dir < BL_SPACEDIM; dir++) {
-	BoxArray ba = Er_new.boxArray();
-	ba.surroundingNodes(dir);
-	rad_fluxes[dir].define(ba, Radiation::nGroups, 0, Fab_allocate);
+	rad_fluxes[dir].define(getEdgeBoxArray(dir), Radiation::nGroups, 0, Fab_allocate);
       }
     }
 #endif
+
+
     
-    // Define the gravity vector so we can pass this to ca_umdrv.
-    MultiFab grav_vector(grids,BL_SPACEDIM,NUM_GROW);
-    grav_vector.setVal(0.);
+    // For the hydrodynamics update we need to have NUM_GROW ghost zones available,
+    // but the state data does not carry ghost zones. So we use a FillPatch
+    // using the state data to give us Sborder, which does have ghost zones. 
+
+    MultiFab Sborder(grids,NUM_STATE,NUM_GROW,Fab_allocate);
+
+    AmrLevel::FillPatch(*this,Sborder,NUM_GROW,prev_time,State_Type,0,NUM_STATE);
+
+    // This array will hold the source terms that go into the hydro update through umdrv.
     
-#ifdef GRAVITY
-    if (do_grav) {
-      // Copy the gravity vector (including NUM_GROW ghost cells) for passing to umdrv.
-      MultiFab::Copy(grav_vector,grav_vec_old,0,0,BL_SPACEDIM,NUM_GROW);
-    }
-#endif
+    MultiFab sources(grids,NUM_STATE,NUM_GROW,Fab_allocate);
+    sources.setVal(0.0,NUM_GROW);
+
+    // Set up external source terms
     
-#ifdef POINTMASS
-    Real mass_change_at_center = 0.;
-#endif
-    
-    MultiFab ext_src_old(grids,NUM_STATE,1,Fab_allocate);
-    ext_src_old.setVal(0.0);
-    
-    MultiFab ext_src_new;
-    bool have_source_terms = add_ext_src;
-#ifdef DIFFUSION
-    have_source_terms = true;
-#endif
-    if (have_source_terms) {
-	ext_src_new.define(grids,NUM_STATE,0,Fab_allocate);
-	ext_src_new.setVal(0.0);
-    }
+    MultiFab ext_src_old(grids,NUM_STATE,NUM_GROW,Fab_allocate);
+    ext_src_old.setVal(0.0,NUM_GROW);
+
+    MultiFab ext_src_new(grids,NUM_STATE,0,Fab_allocate);
+    ext_src_new.setVal(0.0);
 
 #ifdef SGS
     if (add_ext_src) {
       reset_old_sgs(dt);
-      getOldSource(prev_time,dt,ext_src_old,sgs_fluxes);
+      MultiFab& sgs_old = get_old_data(SGS_Type);
+      getSource(prev_time,dt,Sborder,ext_src_old,sgs_old,sgs_fluxes);
     }
 #else
     if (add_ext_src)
-      getOldSource(prev_time,dt,ext_src_old);
+      getSource(prev_time,dt,Sborder,Sborder,ext_src_old,NUM_GROW);
 #endif
-    
+
 #ifdef DIFFUSION
     MultiFab OldTempDiffTerm(grids,1,1);
+    MultiFab OldSpecDiffTerm(grids,NumSpec,1);
+    MultiFab OldViscousTermforMomentum(grids,BL_SPACEDIM,1);
+    MultiFab OldViscousTermforEnergy(grids,1,1);
 #ifdef TAU
-    add_diffusion_to_source(ext_src_old,OldTempDiffTerm,prev_time,tau_diff);
+    add_temp_diffusion_to_source(ext_src_old,OldTempDiffTerm,prev_time,tau_diff);
 #else
-    add_diffusion_to_source(ext_src_old,OldTempDiffTerm,prev_time);
+    add_temp_diffusion_to_source(ext_src_old,OldTempDiffTerm,prev_time);
+#endif
+#if (BL_SPACEDIM == 1) 
+    add_spec_diffusion_to_source(ext_src_old,OldSpecDiffTerm,prev_time);
+    add_viscous_term_to_source(ext_src_old,OldViscousTermforMomentum,OldViscousTermforEnergy,prev_time);
 #endif
 #endif
-
-    ext_src_old.FillBoundary();
-    geom.FillPeriodicBoundary(ext_src_old,0,NUM_STATE,true);
-
-    { // limit the scope of fpi
-	FillPatchIterator fpi(*this, S_new, NUM_GROW, time, State_Type, 0, NUM_STATE);
-	MultiFab& Sborder = fpi.get_mf();
     
-#ifdef REACTIONS
-	// Make sure to zero these even if do_react == 0.
-	MultiFab& ReactMF_old = get_old_data(Reactions_Type);
-	MultiFab& ReactMF     = get_new_data(Reactions_Type);
-	ReactMF_old.setVal(0.);
-	ReactMF.setVal(0.);
-	
-	for (MFIter mfi(Sborder); mfi.isValid(); ++mfi) {
-#ifdef TAU
-	    react_first_half_dt(Sborder[mfi],ReactMF[mfi],tau_diff[mfi],time,dt);
-#else
-	    react_first_half_dt(Sborder[mfi],ReactMF[mfi],time,dt);
+    BoxLib::fill_boundary(ext_src_old, geom);    
+
+    MultiFab::Add(sources,ext_src_old,0,0,NUM_STATE,NUM_GROW);    
+
+#ifdef GRAVITY
+    if (do_grav)
+      add_force_to_sources(grav_old, sources, Sborder);
 #endif
-	}
-#endif
+
+#ifdef ROTATION
+    MultiFab& phirot_old = get_old_data(PhiRot_Type);
+    MultiFab& rot_old = get_old_data(Rotation_Type);
+    MultiFab& phirot_new = get_new_data(PhiRot_Type);
+    MultiFab& rot_new = get_new_data(Rotation_Type);
+
+    // Fill the old rotation data.    
+    
+    if (do_rotation) {
       
+      fill_rotation_field(phirot_old, rot_old, Sborder, prev_time);
+      
+    } else {
+      
+      phirot_old.setVal(0.);
+      rot_old.setVal(0.);
+      
+    } 
+
+    if (do_rotation)
+      add_force_to_sources(rot_old, sources, Sborder);
+#endif
+    
+    
+#ifdef POINTMASS
+    Real mass_change_at_center = 0.;
+#endif
+
+    // Permit the user to update the sponge parameters as a function of time.
+
+    if (do_sponge)
+      BL_FORT_PROC_CALL(UPDATE_SPONGE_PARAMS,update_sponge_params)(&time);
+
+    // Set up the time-rate of change of the source terms.
+    
+    MultiFab& dSdt_new = get_new_data(Source_Type);    
+    
+    // Optionally we can predict the source terms to t + dt/2,
+    // which is the time-level n+1/2 value, To do this we use a
+    // lagged predictor estimate: dS/dt_n = (S_n - S_{n-1}) / dt, so 
+    // S_{n+1/2} = S_n + (dt / 2) * dS/dt_n.
+      
+    if (source_term_predictor == 1) {
+
+      AmrLevel::FillPatch(*this,dSdt_new,NUM_GROW,cur_time,Source_Type,0,NUM_STATE);       
+      
+      dSdt_new.mult(dt / 2.0, NUM_GROW);
+
+      MultiFab::Add(sources,dSdt_new,0,0,NUM_STATE,NUM_GROW);
+
+    }
+
+    {
+
+      // Note that we do the react_half_dt on Sborder because of our Strang
+      // splitting approach -- the "old" data sent to the hydro,
+      // which Sborder represents, has already had a half-timestep of burning.      
+      
+#ifdef REACTIONS
+#ifdef TAU
+	react_half_dt(Sborder,reactions_old,tau_diff,time,dt,NUM_GROW);
+#else
+	react_half_dt(Sborder,reactions_old,time,dt,NUM_GROW);
+#endif
+#endif
+
 #ifdef RADIATION
 	if (Radiation::rad_hydro_combined) {
 
@@ -452,7 +528,8 @@ Castro::advance_hydro (Real time,
 		{
 		    const Box &bx    = mfi.tilebox();
 
-		    FArrayBox &state = Sborder[mfi];
+		    FArrayBox &stateold = S_old[mfi];		    
+		    FArrayBox &statein  = Sborder[mfi];
 		    FArrayBox &stateout = S_new[mfi];
 		
 		    FArrayBox &Er = Erborder[mfi];
@@ -471,14 +548,13 @@ Castro::advance_hydro (Real time,
 			(&is_finest_level,&time,
 			 bx.loVect(), bx.hiVect(),
 			 domain_lo, domain_hi,
-			 BL_TO_FORTRAN(state), BL_TO_FORTRAN(stateout),
+			 BL_TO_FORTRAN(statein), BL_TO_FORTRAN(stateout),
 			 BL_TO_FORTRAN(Er), BL_TO_FORTRAN(lam),
 			 BL_TO_FORTRAN(Erout),
 			 D_DECL(BL_TO_FORTRAN(ugdn[0]), 
 				BL_TO_FORTRAN(ugdn[1]), 
 				BL_TO_FORTRAN(ugdn[2])), 
-			 BL_TO_FORTRAN(ext_src_old[mfi]),
-			 BL_TO_FORTRAN(grav_vector[mfi]), 
+			 BL_TO_FORTRAN(sources[mfi]),
 			 dx, &dt,
 			 D_DECL(BL_TO_FORTRAN(flux[0]), 
 				BL_TO_FORTRAN(flux[1]), 
@@ -495,6 +571,28 @@ Castro::advance_hydro (Real time,
 			 BL_TO_FORTRAN(volume[mfi]), 
 			 &cflLoc, verbose, &priv_nstep_fsp);
 
+		    // Add dt * old-time external source terms
+
+		    stateout.saxpy(dt,ext_src_old[mfi],bx,bx,0,0,NUM_STATE);		    
+
+		    // Gravitational source term for the time-level n data.
+
+		    Real E_added_grav = 0.0;
+		    Real mom_added[3] = { 0.0 };
+
+#ifdef GRAVITY
+		    if (do_grav)
+		      BL_FORT_PROC_CALL(CA_GSRC,ca_gsrc)
+			(ARLIM_3D(bx.loVect()), ARLIM_3D(bx.hiVect()),
+			 ARLIM_3D(domain_lo), ARLIM_3D(domain_hi),
+			 BL_TO_FORTRAN_3D(phi_old[mfi]),
+			 BL_TO_FORTRAN_3D(grav_old[mfi]),
+			 BL_TO_FORTRAN_3D(stateold),
+			 BL_TO_FORTRAN_3D(stateout),
+			 ZFILL(dx),dt,&time,
+			 E_added_grav,mom_added);
+#endif		    
+		    
 		    if (radiation->do_inelastic_scattering) {
 			BL_FORT_PROC_CALL(CA_INELASTIC_SCT, ca_inelastic_sct)
 			    (ARLIM_3D(bx.loVect()), ARLIM_3D(bx.hiVect()),
@@ -520,7 +618,7 @@ Castro::advance_hydro (Real time,
 			BL_FORT_PROC_CALL(PM_COMPUTE_DELTA_MASS,pm_compute_delta_mass)
 			    (&mass_change_at_center,
 			     bx.loVect(), bx.hiVect(),
-			     BL_TO_FORTRAN(state), BL_TO_FORTRAN(stateout),
+			     BL_TO_FORTRAN(statein), BL_TO_FORTRAN(stateout),
 			     BL_TO_FORTRAN(volume[mfi]),
 			     geom.ProbLo(), dx, &time, &dt);
 #endif	
@@ -605,18 +703,22 @@ Castro::advance_hydro (Real time,
 		
 		Real cflLoc = -1.0e+200;
 		int is_finest_level = (level == finest_level) ? 1 : 0;
-		const int*  domain_lo = geom.Domain().loVect();
-		const int*  domain_hi = geom.Domain().hiVect();
+		const int* domain_lo = geom.Domain().loVect();
+		const int* domain_hi = geom.Domain().hiVect();
 		
 		for (MFIter mfi(S_new,hydro_tile_size); mfi.isValid(); ++mfi)
 		{
-		    const Box& bx  = mfi.tilebox();
+		    const Box& bx = mfi.tilebox();
+
+		    const int* lo = bx.loVect();
+		    const int* hi = bx.hiVect();		    		    
 		    
-		    FArrayBox &state = Sborder[mfi];
+		    FArrayBox &stateold = S_old[mfi];
+		    FArrayBox &statein  = Sborder[mfi];
 		    FArrayBox &stateout = S_new[mfi];
-		    
+
 		    // Allocate fabs for fluxes and Godunov velocities.
-		    for (int i = 0; i < BL_SPACEDIM ; i++) {
+		    for (int i = 0; i < BL_SPACEDIM; i++) {
 			const Box& bxtmp = BoxLib::surroundingNodes(bx,i);
 			flux[i].resize(bxtmp,NUM_STATE);
 			ugdn[i].resize(BoxLib::grow(bxtmp,1),1);
@@ -624,14 +726,12 @@ Castro::advance_hydro (Real time,
 	  
 		    BL_FORT_PROC_CALL(CA_UMDRV,ca_umdrv)
 			(&is_finest_level,&time,
-			 bx.loVect(), bx.hiVect(),
-			 domain_lo, domain_hi,
-			 BL_TO_FORTRAN(state), BL_TO_FORTRAN(stateout),
+			 lo, hi, domain_lo, domain_hi,
+			 BL_TO_FORTRAN(statein), BL_TO_FORTRAN(stateout),
 			 D_DECL(BL_TO_FORTRAN(ugdn[0]), 
 				BL_TO_FORTRAN(ugdn[1]), 
 				BL_TO_FORTRAN(ugdn[2])), 
-			 BL_TO_FORTRAN(ext_src_old[mfi]),
-			 BL_TO_FORTRAN(grav_vector[mfi]), 
+			 BL_TO_FORTRAN(sources[mfi]),
 			 dx, &dt,
 			 D_DECL(BL_TO_FORTRAN(flux[0]), 
 				BL_TO_FORTRAN(flux[1]), 
@@ -646,40 +746,16 @@ Castro::advance_hydro (Real time,
 			 &cflLoc, verbose, 
 			 mass_added, eint_added, eden_added, 
 			 xmom_added_flux, 
-#if (BL_SPACEDIM >= 2)
                   	 ymom_added_flux, 
-#endif
-#if (BL_SPACEDIM == 3)
 	                 zmom_added_flux,
-#endif
-	                 xmom_added_grav, 
-#if (BL_SPACEDIM >= 2)
-	                 ymom_added_grav, 
-#endif
-#if (BL_SPACEDIM == 3)
-	                 zmom_added_grav,
-#endif
-#if (BL_SPACEDIM > 1)
-	                 xmom_added_rot,
-#endif
-#if (BL_SPACEDIM >= 2)
-	                 ymom_added_rot,  
-#endif
-#if (BL_SPACEDIM == 3)
-	                 zmom_added_rot,
-#endif
-	                 xmom_added_sponge, 
-#if (BL_SPACEDIM >= 2)
-	                 ymom_added_sponge, 
-#endif
-#if (BL_SPACEDIM == 3)
-	                 zmom_added_sponge,
-#endif
-#if (BL_SPACEDIM > 1)
-	                 E_added_rot, 
-#endif
-                         E_added_flux, E_added_grav, E_added_sponge);
-	    
+                         E_added_flux);
+
+		    // Add dt * old-time external source terms
+
+		    stateout.saxpy(dt,ext_src_old[mfi],bx,bx,0,0,NUM_STATE);
+
+		    // Copy the normal velocities from the Riemann solver
+		    
 		    for (int i = 0; i < BL_SPACEDIM ; i++) {
 			u_gdnv[i][mfi].copy(ugdn[i],mfi.nodaltilebox(i));
 		    }
@@ -689,18 +765,76 @@ Castro::advance_hydro (Real time,
 
 		    for (int i = 0; i < BL_SPACEDIM ; i++)
 		      fluxes[i][mfi].copy(flux[i],mfi.nodaltilebox(i));	  
+
+		    // Gravitational source term for the time-level n data.
+
+		    Real mom_added[3] = { 0.0 };
+
+#ifdef GRAVITY
+		    if (do_grav)
+		      BL_FORT_PROC_CALL(CA_GSRC,ca_gsrc)
+			(ARLIM_3D(lo), ARLIM_3D(hi),
+			 ARLIM_3D(domain_lo), ARLIM_3D(domain_hi),
+			 BL_TO_FORTRAN_3D(phi_old[mfi]),
+			 BL_TO_FORTRAN_3D(grav_old[mfi]),
+			 BL_TO_FORTRAN_3D(stateold),
+			 BL_TO_FORTRAN_3D(stateout),
+			 ZFILL(dx),dt,&time,
+			 E_added_grav,mom_added);
+#endif
+
+		    xmom_added_grav += mom_added[0];
+		    ymom_added_grav += mom_added[1];
+		    zmom_added_grav += mom_added[2];
+
+		    for (int dir = 0; dir < 3; dir++)
+			 mom_added[dir] = 0.0;
+
+		    // Rotational source term for the time-level n data.
+
+#ifdef ROTATION
+		    if (do_rotation)
+		      BL_FORT_PROC_CALL(CA_RSRC,ca_rsrc)
+			(ARLIM_3D(lo), ARLIM_3D(hi),
+			 ARLIM_3D(domain_lo), ARLIM_3D(domain_hi),
+			 BL_TO_FORTRAN_3D(phirot_old[mfi]),
+			 BL_TO_FORTRAN_3D(rot_old[mfi]),
+			 BL_TO_FORTRAN_3D(stateold),
+			 BL_TO_FORTRAN_3D(stateout),
+			 ZFILL(dx),dt,&time,
+			 E_added_rot,mom_added);
+
+#endif
+
+		    xmom_added_rot += mom_added[0];
+		    ymom_added_rot += mom_added[1];
+		    zmom_added_rot += mom_added[2];
+
+		    for (int dir = 0; dir < 3; dir++)
+			 mom_added[dir] = 0.0;
+
+		    if (do_sponge)
+		      BL_FORT_PROC_CALL(CA_SPONGE,ca_sponge)
+			(ARLIM_3D(lo), ARLIM_3D(hi),
+			 BL_TO_FORTRAN_3D(stateout), ZFILL(dx), dt, &time,
+			 E_added_sponge,mom_added);
+
+		    xmom_added_sponge += mom_added[0];
+		    ymom_added_sponge += mom_added[1];
+		    zmom_added_sponge += mom_added[2];
+			 
 		    
 #ifdef POINTMASS
 		    if (level == finest_level)
 			BL_FORT_PROC_CALL(PM_COMPUTE_DELTA_MASS,pm_compute_delta_mass)
 			    (&mass_change_at_center, 
-			     bx.loVect(), bx.hiVect(),
-			     BL_TO_FORTRAN(state), BL_TO_FORTRAN(stateout),
+			     lo, hi,
+			     BL_TO_FORTRAN(statein), BL_TO_FORTRAN(stateout),
 			     BL_TO_FORTRAN(volume[mfi]),
 			     geom.ProbLo(), dx, &time, &dt);
 #endif
 		}
-		
+
 #ifdef _OPENMP
 #pragma omp critical (hydro_courno)
 #endif
@@ -759,14 +893,10 @@ Castro::advance_hydro (Real time,
 				 E_added_flux*cell_vol << std::endl;
 		   std::cout << "xmom added from fluxes                      : " << 
 				 xmom_added_flux*cell_vol << std::endl;
-#if (BL_SPACEDIM >= 2)
 		   std::cout << "ymom added from fluxes                      : " << 
 				 ymom_added_flux*cell_vol << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
 		   std::cout << "zmom added from fluxes                      : " << 
 				 zmom_added_flux*cell_vol << std::endl;
-#endif
 #ifdef GRAVITY
 		   if (do_grav) 
 		   {	 
@@ -774,14 +904,10 @@ Castro::advance_hydro (Real time,
 				    E_added_grav*cell_vol << std::endl;
 		      std::cout << "xmom added from grav. source terms             : " << 
 				    xmom_added_grav*cell_vol << std::endl;
-#if (BL_SPACEDIM >= 2)
 		      std::cout << "ymom added from grav. source terms             : " << 
 				    ymom_added_grav*cell_vol << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
 		      std::cout << "zmom added from grav. source terms             : " << 
 				    zmom_added_grav*cell_vol << std::endl;
-#endif
 		   }
 #endif
 #ifdef ROTATION
@@ -789,16 +915,12 @@ Castro::advance_hydro (Real time,
 		   {	 
 		      std::cout << "(rho E) added from rot. source terms          : " << 
 				    E_added_rot*cell_vol << std::endl;
-#if (BL_SPACEDIM >= 2)
 		      std::cout << "xmom added from rot. source terms             : " << 
 				    xmom_added_rot*cell_vol << std::endl;
 		      std::cout << "ymom added from rot. source terms             : " << 
 				    ymom_added_rot*cell_vol << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
 		      std::cout << "zmom added from rot. source terms             : " << 
 				    zmom_added_rot*cell_vol << std::endl;
-#endif
 		   }
 #endif
 
@@ -808,14 +930,10 @@ Castro::advance_hydro (Real time,
 				    E_added_sponge*cell_vol << std::endl;
 		      std::cout << "xmom added from sponge                        : " << 
 				    xmom_added_sponge*cell_vol << std::endl;
-#if (BL_SPACEDIM >= 2)
 		      std::cout << "ymom added from sponge                        : " << 
 				    ymom_added_sponge*cell_vol << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
 		      std::cout << "zmom added from sponge                        : " << 
 				    zmom_added_sponge*cell_vol << std::endl;
-#endif
 		   }
 	       }
 #ifdef BL_LAZY
@@ -832,7 +950,7 @@ Castro::advance_hydro (Real time,
     if (do_dm_particles && particle_move_type == "Gravitational")
     {
 	BL_ASSERT(level == 0);
-	Castro::theDMPC()->movePredict(grav_vector, level, dt);
+	Castro::theDMPC()->movePredict(grav_old, level, dt);
     }
 #endif
     
@@ -888,12 +1006,25 @@ Castro::advance_hydro (Real time,
         {
 	if (S_new.contains_nan(Density + i, 1, 0,true))
             {
-                std::cout << "Testing component i for NaNs: " << i << std::endl;
+  	        std::cout << "Testing " << desc_lst[State_Type].name(i) << " for NaNs " << std::endl;
                 BoxLib::Abort("S_new has NaNs in this component::advance_hydro()");
             }
         }
     }
 
+    // Now we'll start updating the dSdt MultiFab. First,
+    // get rid of the dt/2 * dS/dt that we added from the last
+    // timestep, then subtract the old sources data to get the
+    // first half of the update for the next calculation of dS/dt.
+    
+    if (source_term_predictor == 1) {
+      MultiFab::Subtract(sources,dSdt_new,0,0,NUM_STATE,NUM_GROW);
+      dSdt_new.setVal(0.0, NUM_GROW);
+      MultiFab::Subtract(dSdt_new,sources,0,0,NUM_STATE,0);
+    }
+    
+    sources.setVal(0.0,NUM_GROW);       
+    
 #ifdef GRAVITY
     // Must define new value of "center" before we call new gravity solve or external source routine
     if (moving_center == 1)
@@ -947,8 +1078,10 @@ Castro::advance_hydro (Real time,
            // Need to put this line here so that the state going into the source calculation
            //  satisfies K > energy_sgs_min
 	reset_new_sgs(dt);
+
+	sgs_new = get_new_data(SGS_Type);
 	
-	getNewSource(cur_time,dt,ext_src_new,sgs_fluxes);
+	getSource(cur_time,dt,S_new,ext_src_new,sgs_new,sgs_fluxes);
 
 	// Add half of new fluxes to the flux register
 	if (do_reflux)
@@ -972,35 +1105,48 @@ Castro::advance_hydro (Real time,
 	      }
 	  }
 #else
-	getNewSource(prev_time,cur_time,dt,ext_src_new);
+	ext_src_new.setVal(0.0);	
+	getSource(cur_time,dt,S_old,S_new,ext_src_new,0);
 #endif
       }
 
 #ifdef SGS
+    
 // old way: time-centering for ext_src, diffusion are separated.
     if (add_ext_src) {
 	time_center_source_terms(S_new,ext_src_old,ext_src_new,dt);
 	reset_new_sgs(dt);
 	computeTemp(S_new);
     }
- #else
+    
+#else
+    
 // New way for non-SGS: time-centering for ext_src, diffusion are merged.
 #ifdef DIFFUSION
     MultiFab& NewTempDiffTerm = OldTempDiffTerm;
+    MultiFab& NewSpecDiffTerm = OldSpecDiffTerm;
+    MultiFab& NewViscousTermforMomentum = OldViscousTermforMomentum;
+    MultiFab& NewViscousTermforEnergy   = OldViscousTermforEnergy;
 #ifdef TAU
-    add_diffusion_to_source(ext_src_new,NewTempDiffTerm,cur_time,tau_diff);
+    add_temp_diffusion_to_source(ext_src_new,NewTempDiffTerm,cur_time,tau_diff);
 #else
-    add_diffusion_to_source(ext_src_new,NewTempDiffTerm,cur_time);
+    add_temp_diffusion_to_source(ext_src_new,NewTempDiffTerm,cur_time);
+#endif
+#if (BL_SPACEDIM == 1) 
+    add_spec_diffusion_to_source(ext_src_new,NewSpecDiffTerm,cur_time);
+    add_viscous_term_to_source(ext_src_new,NewViscousTermforMomentum,NewViscousTermforEnergy,cur_time);
 #endif
 #endif
 
-#endif
-
-    if (have_source_terms) {
-	time_center_source_terms(S_new,ext_src_old,ext_src_new,dt);
-	computeTemp(S_new);
+    if (add_ext_src) {
+      time_center_source_terms(S_new,ext_src_old,ext_src_new,dt);
+      computeTemp(S_new);
     }
+    
+#endif
 
+    MultiFab::Add(sources,ext_src_new,0,0,NUM_STATE,0);    
+    
 #ifdef GRAVITY
     if (do_grav)
       {
@@ -1016,8 +1162,11 @@ Castro::advance_hydro (Real time,
             if ( level < parent->finestLevel() && (gravity->NoComposite() != 1) ) {
 		phi_new.minus(comp_minus_level_phi, 0, 1, 0);
 	    }
-            int fill_interior = 0;
-            gravity->solve_for_new_phi(level,phi_new,gravity->get_grad_phi_curr(level),fill_interior);
+            int is_new = 1;
+            gravity->solve_for_phi(level,
+				   phi_new,
+				   gravity->get_grad_phi_curr(level),
+				   is_new);
 	    
             if (gravity->test_results_of_solves() == 1)
 	      {
@@ -1046,49 +1195,50 @@ Castro::advance_hydro (Real time,
 	    
             if (do_reflux)  gravity->add_to_fluxes(level,iteration,ncycle);
 	  }
+	else {
+	    phi_new.setVal(0.0);  // so that plotfiles do not contain nans
+	}
 
 	// Now do corrector part of source term update
-	MultiFab grav_vec_new(grids,BL_SPACEDIM,1,Fab_allocate);
-	gravity->get_new_grav_vector(level,grav_vec_new,cur_time);
+	gravity->get_new_grav_vector(level,grav_new,cur_time);
 
-        Real E_added = 0.;
-	Real xmom_added      = 0.;
-	Real ymom_added      = 0.;
-	Real zmom_added      = 0.;
+        Real E_added    = 0.;
+	Real xmom_added = 0.;
+	Real ymom_added = 0.;
+	Real zmom_added = 0.;
+
+	const int* domlo = geom.Domain().loVect();
+	const int* domhi = geom.Domain().hiVect();
 
 #ifdef _OPENMP
 #pragma omp parallel reduction(+:E_added,xmom_added,ymom_added,zmom_added)
 #endif
 	{
-	    FArrayBox single_cell_fab(Box(IntVect::TheZeroVector(),IntVect::TheZeroVector()));
-	    
 	    for (MFIter mfi(S_new,true); mfi.isValid(); ++mfi)
 	    {
 		const Box& bx = mfi.tilebox();
 		
+		Real mom_added[3] = { 0.0 };
+
 		BL_FORT_PROC_CALL(CA_CORRGSRC,ca_corrgsrc)
-		    (bx.loVect(), bx.hiVect(),
-		     BL_TO_FORTRAN(grav_vec_old[mfi]),
-		     BL_TO_FORTRAN(grav_vec_new[mfi]),
-		     BL_TO_FORTRAN(S_old[mfi]),
-		     BL_TO_FORTRAN(S_new[mfi]),
-#if (BL_SPACEDIM == 3)
-		     BL_TO_FORTRAN(phi_old[mfi]),
-		     BL_TO_FORTRAN(phi_new[mfi]),
-		     BL_TO_FORTRAN(fluxes[0][mfi]),
-		     BL_TO_FORTRAN(fluxes[1][mfi]),
-		     BL_TO_FORTRAN(fluxes[2][mfi]),
-#endif
-		     dx,dt,
-		     BL_TO_FORTRAN(volume[mfi]),
-		     xmom_added,
-#if (BL_SPACEDIM >= 2)
-		     ymom_added,
-#endif
-#if (BL_SPACEDIM == 3)
-		     zmom_added,
-#endif
-		     E_added);
+		    (ARLIM_3D(bx.loVect()), ARLIM_3D(bx.hiVect()),
+		     ARLIM_3D(domlo), ARLIM_3D(domhi),
+		     BL_TO_FORTRAN_3D(phi_old[mfi]),
+		     BL_TO_FORTRAN_3D(phi_new[mfi]),
+		     BL_TO_FORTRAN_3D(grav_old[mfi]),
+		     BL_TO_FORTRAN_3D(grav_new[mfi]),
+		     BL_TO_FORTRAN_3D(S_old[mfi]),
+		     BL_TO_FORTRAN_3D(S_new[mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[0][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[1][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[2][mfi]),
+		     ZFILL(dx),dt,&cur_time,
+		     BL_TO_FORTRAN_3D(volume[mfi]),
+		     E_added, mom_added);
+
+		xmom_added += mom_added[0];
+		ymom_added += mom_added[1];
+		zmom_added += mom_added[2];
 	    }
 	}
 
@@ -1120,30 +1270,44 @@ Castro::advance_hydro (Real time,
 #endif
         }	
 
+	// Add this to the source term array if we're using the source term predictor.
+	// If not, don't bother because sources isn't actually used in the update after this point.
+
+	if (source_term_predictor == 1)
+	  add_force_to_sources(grav_new, sources, S_new);
+
 	computeTemp(S_new);
       }
 #endif
-    
+
 #ifdef SGS  // for non-SGS, diffusion has been time-centered.
 #ifdef DIFFUSION
 #ifdef TAU
-    time_center_diffusion(S_new, OldTempDiffTerm, cur_time, dt, tau_diff);
+    time_center_temp_diffusion(S_new, OldTempDiffTerm, cur_time, dt, tau_diff);
 #else
-    time_center_diffusion(S_new, OldTempDiffTerm, cur_time, dt);
+    time_center_temp_diffusion(S_new, OldTempDiffTerm, cur_time, dt);
 #endif
+    time_center_spec_diffusion(S_new, OldSpecDiffTerm, cur_time, dt);
+    time_center_viscous_terms(S_new, OldViscousTermforMomentum, OldViscousTermforEnergy, cur_time, dt);
 #endif
 #endif
 
 #ifdef ROTATION
-#if (BL_SPACEDIM > 1)
-    if (do_rotation)
-      {
+    if (do_rotation) {
+
+        // Fill the new rotation data.
+      
+        fill_rotation_field(phirot_new, rot_new, S_new, cur_time);
+
 	// Now do corrector part of rotation source term update
 
         Real E_added    = 0.;
 	Real xmom_added = 0.;
 	Real ymom_added = 0.;
 	Real zmom_added = 0.;
+
+	const int* domlo = geom.Domain().loVect();
+	const int* domhi = geom.Domain().hiVect();
 
 #ifdef _OPENMP
 #pragma omp parallel reduction(+:E_added,xmom_added,ymom_added,zmom_added)
@@ -1152,71 +1316,89 @@ Castro::advance_hydro (Real time,
 	    for (MFIter mfi(S_new,true); mfi.isValid(); ++mfi)
 	    {
 		const Box& bx = mfi.tilebox();
-		
+
+		Real mom_added[3] = { 0.0 };
+
 		BL_FORT_PROC_CALL(CA_CORRRSRC,ca_corrrsrc)
-		    (bx.loVect(), bx.hiVect(),
-		     BL_TO_FORTRAN(S_old[mfi]),
-		     BL_TO_FORTRAN(S_new[mfi]),
-		     BL_TO_FORTRAN(fluxes[0][mfi]),
-#if (BL_SPACEDIM >= 2)
-		     BL_TO_FORTRAN(fluxes[1][mfi]),
-#endif
-#if (BL_SPACEDIM == 3)
-		     BL_TO_FORTRAN(fluxes[2][mfi]),
-#endif
-		     dx,dt,
-		     BL_TO_FORTRAN(volume[mfi]),
-		     xmom_added,
-#if (BL_SPACEDIM >= 2)
-		     ymom_added,
-#endif
-#if (BL_SPACEDIM == 3)
-		     zmom_added,
-#endif
-		     E_added);
+		    (ARLIM_3D(bx.loVect()), ARLIM_3D(bx.hiVect()),
+		     ARLIM_3D(domlo), ARLIM_3D(domhi),
+		     BL_TO_FORTRAN_3D(phirot_old[mfi]),
+		     BL_TO_FORTRAN_3D(phirot_new[mfi]),
+		     BL_TO_FORTRAN_3D(rot_old[mfi]),
+		     BL_TO_FORTRAN_3D(rot_new[mfi]),
+		     BL_TO_FORTRAN_3D(S_old[mfi]),
+		     BL_TO_FORTRAN_3D(S_new[mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[0][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[1][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[2][mfi]),
+		     ZFILL(dx),dt,&cur_time,
+		     BL_TO_FORTRAN_3D(volume[mfi]),
+		     E_added,mom_added);
+
+		xmom_added += mom_added[0];
+		ymom_added += mom_added[1];
+		zmom_added += mom_added[2];
 	    }
-	}
+	} 
 
         if (print_energy_diagnostics)
         {
 	    const Real cell_vol = D_TERM(dx[0], *dx[1], *dx[2]);
-	    Real foo[1+BL_SPACEDIM] = {E_added, D_DECL(xmom_added, ymom_added, zmom_added)};
+	    Real foo[4] = {E_added, xmom_added, ymom_added, zmom_added};
 #ifdef BL_LAZY
             Lazy::QueueReduction( [=] () mutable {
 #endif
-	    ParallelDescriptor::ReduceRealSum(foo, 1+BL_SPACEDIM, ParallelDescriptor::IOProcessorNumber());
+	    ParallelDescriptor::ReduceRealSum(foo, 4, ParallelDescriptor::IOProcessorNumber());
 	    if (ParallelDescriptor::IOProcessor()) {
 		E_added = foo[0];
-		D_EXPR(xmom_added = foo[1],
-		       ymom_added = foo[2],
-		       zmom_added = foo[3]);
+		xmom_added = foo[1],
+		ymom_added = foo[2],
+		zmom_added = foo[3];
 
 		std::cout << "(rho E) added from rot. corr.  terms          : " << E_added*cell_vol << std::endl;
 		std::cout << "xmom added from rot. corr. terms              : " << xmom_added*cell_vol << std::endl;
-#if (BL_SPACEDIM >= 2)	       
 		std::cout << "ymom added from rot. corr. terms              : " << ymom_added*cell_vol << std::endl;
-#endif
-#if (BL_SPACEDIM == 3)
 		std::cout << "zmom added from rot. corr. terms              : " << zmom_added*cell_vol << std::endl;
-#endif
 	    }
 #ifdef BL_LAZY
 	    });
 #endif
-        }	
+        }
 
 	computeTemp(S_new);
-      }
-#endif
+
+    } else {
+
+        phirot_new.setVal(0.0);
+        rot_new.setVal(0.0);
+
+    }
+
+    // Add this to the source term array if we're using the source term predictor.
+    // If not, don't bother because sources isn't actually used in the update after this point.
+
+    if (source_term_predictor == 1)
+      add_force_to_sources(rot_new, sources, S_new);
+
 #endif
 
     reset_internal_energy(S_new);
+
+    if (source_term_predictor == 1) {
+    
+      // Calculate the time derivative of the source terms.
+
+      MultiFab::Add(dSdt_new,sources,0,0,NUM_STATE,0);
+      
+      dSdt_new.mult(1.0/dt);
+
+    } 
     
 #ifdef REACTIONS
 #ifdef TAU
-    react_second_half_dt(S_new,tau_diff,cur_time,dt,1);
+    react_half_dt(S_new,reactions_new,tau_diff,cur_time,dt);
 #else
-    react_second_half_dt(S_new,cur_time,dt,1);
+    react_half_dt(S_new,reactions_new,cur_time,dt);
 #endif
 #endif
 
@@ -1291,13 +1473,14 @@ Castro::advance_no_hydro (Real time,
     }
 #endif
 
-    MultiFab grav_vec_old;
-
 #ifdef GRAVITY
     // Old and new gravitational potential.
        
     MultiFab& phi_old = get_old_data(PhiGrav_Type);
     MultiFab& phi_new = get_new_data(PhiGrav_Type);
+
+    MultiFab& grav_old = get_old_data(Gravity_Type);
+    MultiFab& grav_new = get_new_data(Gravity_Type);
     
     if (do_grav) {
        if (do_reflux && level < finest_level && gravity->get_gravity_type() == "PoissonGrav")
@@ -1305,12 +1488,10 @@ Castro::advance_no_hydro (Real time,
 
        gravity->swapTimeLevels(level);
 
-       grav_vec_old.define(grids,BL_SPACEDIM,NUM_GROW,Fab_allocate); 
-
        // Define the old gravity vector (aka grad_phi on cell centers)
        //   Note that this is based on the multilevel solve when doing "PoissonGrav".
 
-       gravity->get_old_grav_vector(level,grav_vec_old,time);
+       gravity->get_old_grav_vector(level,grav_old,time);
 
        if (gravity->get_gravity_type() == "PoissonGrav" &&
            gravity->test_results_of_solves() == 1)
@@ -1318,16 +1499,21 @@ Castro::advance_no_hydro (Real time,
     }
     else
     {
-       MultiFab& new_grav_mf = get_new_data(Gravity_Type);
-       new_grav_mf.setVal(0.0);
+       grav_new.setVal(0.0);
+       phi_new.setVal(0.0);
     }
 #endif 
 
+#ifdef REACTIONS
+    MultiFab& reactions_old = get_old_data(Reactions_Type);
+    MultiFab& reactions_new = get_new_data(Reactions_Type);
+#endif    
+    
 #ifdef DIFFUSION
 #ifdef TAU
     MultiFab tau_diff(grids,1,1);
     tau_diff.setVal(0.);
-    define_tau(tau_diff,grav_vec_old,time);
+    define_tau(tau_diff,grav_old,time);
 #endif
 #endif
 
@@ -1338,22 +1524,11 @@ Castro::advance_no_hydro (Real time,
     enforce_nonnegative_species(S_old);
 
 #ifdef REACTIONS
-    // Make sure to zero these even if do_react == 0.
-    MultiFab& ReactMF_old = get_old_data(Reactions_Type);
-    MultiFab& ReactMF     = get_new_data(Reactions_Type);
-    ReactMF_old.setVal(0.);
-    ReactMF.setVal(0.);
-
-    for (FillPatchIterator fpi(*this, S_old, 1, time, State_Type, 0, NUM_STATE);
-	   fpi.isValid(); ++fpi)
-    {
-	  FArrayBox &state = fpi();
 #ifdef TAU
-          react_first_half_dt(state,ReactMF[fpi],tau_diff[fpi],time,dt);
+    react_half_dt(S_old,reactions_old,tau_diff,time,dt);
 #else
-          react_first_half_dt(state,ReactMF[fpi],time,dt);
+    react_half_dt(S_old,reactions_old,time,dt);
 #endif
-    }
 #endif
  
 #ifdef GRAVITY
@@ -1367,8 +1542,7 @@ Castro::advance_no_hydro (Real time,
         if (gravity->NoComposite() != 1 && level < parent->finestLevel()) {
 	    comp_minus_level_phi.define(grids,1,0,Fab_allocate);
 	    for (int n=0; n<BL_SPACEDIM; ++n) {
-		comp_minus_level_grad_phi.set(n,
-                           new MultiFab(BoxArray(grids).surroundingNodes(n),1,0));
+		comp_minus_level_grad_phi.set(n, new MultiFab(getEdgeBoxArray(n),1,0));
 	    }
 	    gravity->create_comp_minus_level_grad_phi(level,
                             comp_minus_level_phi,comp_minus_level_grad_phi);
@@ -1377,8 +1551,11 @@ Castro::advance_no_hydro (Real time,
               std::cout << " " << '\n';
               std::cout << "... old-time level solve at level " << level << '\n';
            }
-           int fill_interior = 0;
-           gravity->solve_for_old_phi(level,phi_old,gravity->get_grad_phi_prev(level),fill_interior);
+           int is_new = 0;
+           gravity->solve_for_phi(level,
+				  phi_old,
+				  gravity->get_grad_phi_prev(level),
+				  is_new);
         }
     }
 #endif
@@ -1390,7 +1567,7 @@ Castro::advance_no_hydro (Real time,
         
     if (add_ext_src) {
            MultiFab ext_src_old(grids,NUM_STATE,0,Fab_allocate);
-           getOldSource(prev_time,dt,ext_src_old);
+           getSource(prev_time,dt,S_old,S_old,ext_src_old,0);
            ext_src_old.mult(dt);
            MultiFab::Add(S_new,ext_src_old,0,0,NUM_STATE,0);
 
@@ -1399,7 +1576,7 @@ Castro::advance_no_hydro (Real time,
 
            // Compute source at new time
            MultiFab ext_src_new(grids,NUM_STATE,0,Fab_allocate);
-           getNewSource(prev_time,cur_time,dt,ext_src_new);
+           getSource(cur_time,dt,S_old,S_new,ext_src_new,0);
 
            ext_src_old.mult(-0.5);
            ext_src_new.mult( 0.5*dt);
@@ -1411,6 +1588,10 @@ Castro::advance_no_hydro (Real time,
 
     computeTemp(S_new);
 
+#ifdef GRAVITY
+    MultiFab::Copy(phi_new, phi_old, 0, 0, 1, phi_new.nGrow());
+#endif
+
     // ******************
     //  Note: If add_ext_src changed the density, 
     //        we need to update gravity and the associated source terms and
@@ -1419,17 +1600,18 @@ Castro::advance_no_hydro (Real time,
 
 #ifdef DIFFUSION
 #ifdef TAU
-        full_diffusion_update(S_new,prev_time,cur_time,dt,tau_diff);
+        full_temp_diffusion_update(S_new,prev_time,cur_time,dt,tau_diff);
 #else
-        full_diffusion_update(S_new,prev_time,cur_time,dt);
+        full_temp_diffusion_update(S_new,prev_time,cur_time,dt);
 #endif
+        full_spec_diffusion_update(S_new,prev_time,cur_time,dt);
 #endif
         
 #ifdef REACTIONS
 #ifdef TAU
-       react_second_half_dt(S_new,tau_diff,cur_time,dt,1);
+       react_half_dt(S_new,reactions_new,tau_diff,cur_time,dt);
 #else
-       react_second_half_dt(S_new,cur_time,dt,1);
+       react_half_dt(S_new,reactions_new,cur_time,dt);
 #endif
 #endif
 

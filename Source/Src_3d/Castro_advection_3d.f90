@@ -34,8 +34,6 @@ contains
 
   subroutine umeth3d(q, c, gamc, csml, flatn, qd_l1, qd_l2, qd_l3, qd_h1, qd_h2, qd_h3, &
                      srcQ, src_l1, src_l2, src_l3, src_h1, src_h2, src_h3, &
-                     grav, gv_l1, gv_l2, gv_l3, gv_h1, gv_h2, gv_h3, &
-                     rot,  rt_l1, rt_l2, rt_l3, rt_h1, rt_h2, rt_h3, &
                      ilo1, ilo2, ilo3, ihi1, ihi2, ihi3, dx, dy, dz, dt, &
                      flux1, fd1_l1, fd1_l2, fd1_l3, fd1_h1, fd1_h2, fd1_h3, &
                      flux2, fd2_l1, fd2_l2, fd2_l3, fd2_h1, fd2_h2, fd2_h3, &
@@ -49,9 +47,9 @@ contains
                      pdivu, domlo, domhi)
 
     use mempool_module, only : bl_allocate, bl_deallocate
-    use meth_params_module, only : QVAR, NVAR, QPRES, QRHO, QU, QFS, QFX, QTEMP, QREINT, ppm_type, &
-                                   use_pslope, ppm_trace_grav, ppm_trace_rot, ppm_temp_fix, &
-                                   do_grav, do_rotation, hybrid_riemann
+    use meth_params_module, only : QVAR, NVAR, QPRES, QRHO, QU, QW, QFS, QFX, QTEMP, QREINT, ppm_type, &
+                                   use_pslope, ppm_trace_sources, ppm_temp_fix, &
+                                   hybrid_riemann
     use trace_ppm_module, only : tracexy_ppm, tracez_ppm
     use trace_module, only : tracexy, tracez
     use transverse_module
@@ -59,7 +57,6 @@ contains
     use slope_module, only : uslope, pslope
     use network
     use eos_module
-    use eos_type_module
     use riemann_module, only: cmpflx, shock
     use bl_constants_module
 
@@ -67,8 +64,6 @@ contains
 
     integer qd_l1, qd_l2, qd_l3, qd_h1, qd_h2, qd_h3
     integer src_l1, src_l2, src_l3, src_h1, src_h2, src_h3
-    integer gv_l1, gv_l2, gv_l3, gv_h1, gv_h2, gv_h3
-    integer rt_l1, rt_l2, rt_l3, rt_h1, rt_h2, rt_h3
     integer ilo1, ilo2, ilo3, ihi1, ihi2, ihi3
     integer fd1_l1, fd1_l2, fd1_l3, fd1_h1, fd1_h2, fd1_h3
     integer fd2_l1, fd2_l2, fd2_l3, fd2_h1, fd2_h2, fd2_h3
@@ -86,8 +81,6 @@ contains
     double precision  csml(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision flatn(qd_l1:qd_h1,qd_l2:qd_h2,qd_l3:qd_h3)
     double precision  srcQ(src_l1:src_h1,src_l2:src_h2,src_l3:src_h3,QVAR)
-    double precision  grav(gv_l1:gv_h1,gv_l2:gv_h2,gv_l3:gv_h3,3)
-    double precision   rot(rt_l1:rt_h1,rt_l2:rt_h2,rt_l3:rt_h3,3)
     double precision flux1(fd1_l1:fd1_h1,fd1_l2:fd1_h2,fd1_l3:fd1_h3,NVAR)
     double precision flux2(fd2_l1:fd2_h1,fd2_l2:fd2_h2,fd2_l3:fd2_h3,NVAR)
     double precision flux3(fd3_l1:fd3_h1,fd3_l2:fd3_h2,fd3_l3:fd3_h3,NVAR)
@@ -140,8 +133,7 @@ contains
     double precision, pointer:: pgdnvtmpz2(:,:,:), ugdnvtmpz2(:,:,:), gegdnvtmpz2(:,:,:)
     
     double precision, pointer:: Ip(:,:,:,:,:,:), Im(:,:,:,:,:,:)
-    double precision, pointer:: Ip_g(:,:,:,:,:,:), Im_g(:,:,:,:,:,:)
-    double precision, pointer:: Ip_r(:,:,:,:,:,:), Im_r(:,:,:,:,:,:)
+    double precision, pointer:: Ip_src(:,:,:,:,:,:), Im_src(:,:,:,:,:,:)
     double precision, pointer:: Ip_gc(:,:,:,:,:,:), Im_gc(:,:,:,:,:,:)
 
     double precision, pointer :: shk(:,:,:)
@@ -240,13 +232,9 @@ contains
        call bl_allocate ( Ip, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,QVAR)
        call bl_allocate ( Im, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,QVAR)
        
-       ! for gravity (last index is x,y,z component)
-       call bl_allocate ( Ip_g, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,3)
-       call bl_allocate ( Im_g, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,3)
-       
-       ! for rotation (last index is x,y,z component)
-       call bl_allocate ( Ip_r, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,3)
-       call bl_allocate ( Im_r, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,3)
+       ! for source terms
+       call bl_allocate ( Ip_src, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,QVAR)
+       call bl_allocate ( Im_src, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,QVAR)
        
        ! for gamc -- needed for the reference state in eigenvectors
        call bl_allocate ( Ip_gc, ilo1-1,ihi1+1,ilo2-1,ihi2+1,1,2,1,3,1,3,1,1)
@@ -319,78 +307,73 @@ contains
 
           do n=1,QVAR
              call ppm(q(:,:,:,n  ),  qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                      q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      q(:,:,:,QU:QW),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       Ip(:,:,:,:,:,n),Im(:,:,:,:,:,n), &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
           end do
 
-          if (do_grav .eq. 1 .and. ppm_trace_grav .eq. 1) then
-             do n=1,3
-                call ppm(grav(:,:,:,n),gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
-                         q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+          if (ppm_trace_sources .eq. 1) then
+             do n=1,QVAR
+                call ppm(srcQ(:,:,:,n),src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
+                         q(:,:,:,QU:QW),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                          flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         Ip_g(:,:,:,:,:,n),Im_g(:,:,:,:,:,n), &
+                         Ip_src(:,:,:,:,:,n),Im_src(:,:,:,:,:,n), &
                          ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
              enddo
           endif
-
-          if (do_rotation .eq. 1 .and. ppm_trace_rot .eq. 1) then
-             do n=1,3
-                call ppm(rot(:,:,:,n),rt_l1,rt_l2,rt_l3,rt_h1,rt_h2,rt_h3, &
-                         q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                         Ip_r(:,:,:,:,:,n),Im_r(:,:,:,:,:,n), &
-                         ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
-             enddo
-          endif
-
 
           if (ppm_temp_fix /= 1) then
              call ppm(gamc(:,:,:),qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                      q(:,:,:,QU:),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
+                      q(:,:,:,QU:QW),c,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                       Ip_gc(:,:,:,:,:,1),Im_gc(:,:,:,:,:,1), &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dz,dt,k3d,kc)
-          else
-             ! temperature-based PPM
+          else          
+
              do iwave = 1, 3
                 do idim = 1, 3
+
                    do j = ilo2-1, ihi2+1
                       do i = ilo1-1, ihi1+1
                          eos_state % rho = Ip(i,j,kc,idim,iwave,QRHO)
                          eos_state % T   = Ip(i,j,kc,idim,iwave,QTEMP)
-                         eos_state % xn  = Ip(i,j,kc,idim,iwave,QFS:QFS-1+nspec)
-                         eos_state % aux = Ip(i,j,kc,idim,iwave,QFX:QFX-1+naux)
+                         
+                         eos_state % xn  = Ip(i,j,kc,idim,iwave,QFS:QFS+nspec-1)
+                         eos_state % aux = Ip(i,j,kc,idim,iwave,QFX:QFX+naux-1)
 
-                         call eos(eos_input_rt, eos_state, .false.)
-                         
-                         Ip(i,j,kc,idim,iwave,QPRES) = eos_state%p
-                         Ip(i,j,kc,idim,iwave,QREINT) = Ip(i,j,kc,idim,iwave,QRHO)*eos_state%e
-                         Ip_gc(i,j,kc,idim,iwave,1) = eos_state%gam1
+                         call eos(eos_input_rt, eos_state)
 
-                         
-                         eos_state % rho = Im(i,j,kc,idim,iwave,QRHO)
-                         eos_state % T   = Im(i,j,kc,idim,iwave,QTEMP)
-                         eos_state % xn  = Im(i,j,kc,idim,iwave,QFS:QFS-1+nspec)
-                         eos_state % aux = Im(i,j,kc,idim,iwave,QFX:QFX-1+naux)
-                         
-                         call eos(eos_input_rt, eos_state, .false.)
-                         
-                         Im(i,j,kc,idim,iwave,QPRES) = eos_state%p
-                         Im(i,j,kc,idim,iwave,QREINT) = Im(i,j,kc,idim,iwave,QRHO)*eos_state%e
-                         Im_gc(i,j,kc,idim,iwave,1) = eos_state%gam1
-                         
+                         Ip(i,j,kc,idim,iwave,QPRES)  = eos_state % p
+                         Ip(i,j,kc,idim,iwave,QREINT) = eos_state % e * Ip(i,j,kc,idim,iwave,QRHO)
+                         Ip_gc(i,j,kc,idim,iwave,1)   = eos_state % gam1
                       enddo
                    enddo
+
+                   do j = ilo2-1, ihi2+1
+                      do i = ilo1-1, ihi1+1
+                         eos_state % rho = Im(i,j,kc,idim,iwave,QRHO)
+                         eos_state % T   = Im(i,j,kc,idim,iwave,QTEMP)
+
+                         eos_state % xn  = Im(i,j,kc,idim,iwave,QFS:QFS+nspec-1)
+                         eos_state % aux = Im(i,j,kc,idim,iwave,QFX:QFX+naux-1)
+
+                         call eos(eos_input_rt, eos_state)
+
+                         Im(i,j,kc,idim,iwave,QPRES)  = eos_state % p
+                         Im(i,j,kc,idim,iwave,QREINT) = eos_state % e * Im(i,j,kc,idim,iwave,QRHO)
+                         Im_gc(i,j,kc,idim,iwave,1)   = eos_state % gam1
+                      enddo
+                   enddo
+
                 enddo
              enddo
-             
+
           endif
 
           ! Compute U_x and U_y at kc (k3d)
           call tracexy_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                           Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                           Ip,Im,Ip_src,Im_src,Ip_gc,Im_gc, &
                            qxm,qxp,qym,qyp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                            gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            ilo1,ilo2,ihi1,ihi2,dt,kc,k3d)
@@ -407,7 +390,7 @@ contains
                            flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                            dqx(:,:,:,QPRES),dqy(:,:,:,QPRES),dqz(:,:,:,QPRES), &
                            ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
-                           grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3, &
+                           srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
                            ilo1,ilo2,ihi1,ihi2,kc,k3d,dx,dy,dz)
 
           ! Compute U_x and U_y at kc (k3d)
@@ -469,7 +452,7 @@ contains
           ! Compute U_z at kc (k3d)
           if (ppm_type .gt. 0) then
              call tracez_ppm(q,c,flatn,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                             Ip,Im,Ip_g,Im_g,Ip_r,Im_r,Ip_gc,Im_gc, &
+                             Ip,Im,Ip_src,Im_src,Ip_gc,Im_gc, &
                              qzm,qzp,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                              gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
                              ilo1,ilo2,ihi1,ihi2,dt,km,kc,k3d)
@@ -525,9 +508,7 @@ contains
                        ugdnvtmpx,pgdnvtmpx,gegdnvtmpx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        ugdnvtmpy,pgdnvtmpy,gegdnvtmpy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                        gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                       srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-                       grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
-                       rot,rt_l1,rt_l2,rt_l3,rt_h1,rt_h2,rt_h3,&
+                       srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3,&
                        hdt,hdtdx,hdtdy,ilo1,ihi1,ilo2,ihi2,kc,km,k3d)
 
           ! Compute F^z at kc (k3d) -- note that flux3 is indexed by k3d, not kc
@@ -587,9 +568,7 @@ contains
                           ugdnvy,pgdnvy,gegdnvy,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           ugdnvtmpz2,pgdnvtmpz2,gegdnvtmpz2,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                          srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-                          grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
-                          rot,rt_l1,rt_l2,rt_l3,rt_h1,rt_h2,rt_h3,&
+                          srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3,&
                           hdt,hdtdy,hdtdz,ilo1-1,ihi1+1,ilo2,ihi2,km,kc,k3d-1)
 
              ! Compute U''_y at km (k3d-1)
@@ -599,9 +578,7 @@ contains
                           ugdnvx,pgdnvx,gegdnvx,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           ugdnvtmpz1,pgdnvtmpz1,gegdnvtmpz1,ilo1-1,ilo2-1,1,ihi1+2,ihi2+2,2, &
                           gamc,qd_l1,qd_l2,qd_l3,qd_h1,qd_h2,qd_h3, &
-                          srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3, &
-                          grav,gv_l1,gv_l2,gv_l3,gv_h1,gv_h2,gv_h3,&
-                          rot,rt_l1,rt_l2,rt_l3,rt_h1,rt_h2,rt_h3,&
+                          srcQ,src_l1,src_l2,src_l3,src_h1,src_h2,src_h3,&
                           hdt,hdtdx,hdtdz,ilo1,ihi1,ilo2-1,ihi2+1,km,kc,k3d-1)
 
              ! Compute F^x at km (k3d-1)
@@ -738,11 +715,8 @@ contains
        call bl_deallocate ( Ip)
        call bl_deallocate ( Im)
        
-       call bl_deallocate ( Ip_g)
-       call bl_deallocate ( Im_g)
-       
-       call bl_deallocate ( Ip_r)
-       call bl_deallocate ( Im_r)
+       call bl_deallocate ( Ip_src)
+       call bl_deallocate ( Im_src)
        
        call bl_deallocate ( Ip_gc)
        call bl_deallocate ( Im_gc)
@@ -775,13 +749,13 @@ contains
     use mempool_module, only : bl_allocate, bl_deallocate
     use network, only : nspec, naux
     use eos_module
-    use eos_type_module
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, &
-                                   UEDEN, UEINT, UESGS, UTEMP, UFA, UFS, UFX, &
+                                   UEDEN, UEINT, UESGS, UTEMP, &
                                    QVAR, QRHO, QU, QV, QW, &
-                                   QREINT, QESGS, QPRES, QTEMP, QGAME, QFA, QFS, QFX, &
-                                   nadv, allow_negative_energy, small_temp, use_flattening, &
-                                   npassive, upass_map, qpass_map, dual_energy_eta1
+                                   QREINT, QESGS, QPRES, QTEMP, QGAME, QFS, QFX, &
+                                   use_flattening, &
+                                   npassive, upass_map, qpass_map, dual_energy_eta1, &
+                                   allow_negative_energy
     
     use flatten_module
     use bl_constants_module
@@ -808,18 +782,14 @@ contains
 
     double precision, pointer:: dpdrho(:,:,:)
     double precision, pointer:: dpde(:,:,:)
-    double precision, pointer:: dpdX_er(:,:,:,:)
+!    double precision, pointer:: dpdX_er(:,:,:,:)
 
     integer          :: i, j, k
-    integer          :: pt_index(3)
     integer          :: ngp, ngf, loq(3), hiq(3)
-    integer          :: n, nq
-    integer          :: iadv, ispec, iaux
+    integer          :: n, nq, ipassive
     double precision :: courx, coury, courz, courmx, courmy, courmz
     double precision :: kineng, rhoinv
     double precision :: dtdx, dtdy, dtdz
-
-    integer :: ipassive
 
     type (eos_t) :: eos_state
 
@@ -827,14 +797,15 @@ contains
     dtdy = dt/dy
     dtdz = dt/dz
 
+    do i=1,3
+       loq(i) = lo(i)-ngp
+       hiq(i) = hi(i)+ngp
+    enddo    
+    
     call bl_allocate( dpdrho, q_l1,q_h1,q_l2,q_h2,q_l3,q_h3)
     call bl_allocate(   dpde, q_l1,q_h1,q_l2,q_h2,q_l3,q_h3)
 !    call bl_allocate(dpdX_er, q_l1,q_h1,q_l2,q_h2,q_l3,q_h3,1,nspec)
 
-    do i=1,3
-       loq(i) = lo(i)-ngp
-       hiq(i) = hi(i)+ngp
-    enddo
     !
     ! Make q (all but p), except put e in slot for rho.e, fix after eos call.
     ! The temperature is used as an initial guess for the eos call and will be overwritten.
@@ -882,10 +853,9 @@ contains
        enddo
     enddo
 
-    ! Load passively-advected quatities, c, into q, assuming they 
-    ! arrived in uin as rho.c
+    ! Load passively advected quatities into q
     do ipassive = 1, npassive
-       n = upass_map(ipassive)
+       n  = upass_map(ipassive)
        nq = qpass_map(ipassive)
        do k = loq(3),hiq(3)
           do j = loq(2),hiq(2)
@@ -896,64 +866,42 @@ contains
        enddo
     enddo
 
-    ! Get gamc, p, T, c, csml using q state
+    if (allow_negative_energy .eq. 0) eos_state % reset = .true.    
+    
     do k = loq(3), hiq(3)
        do j = loq(2), hiq(2)
           do i = loq(1), hiq(1)
-             
-             pt_index(:) = (/i, j, k/)
-
-             eos_state % T   = q(i,j,k,QTEMP)
-             eos_state % rho = q(i,j,k,QRHO)
+             eos_state % T   = q(i,j,k,QTEMP )
+             eos_state % rho = q(i,j,k,QRHO  )
+             eos_state % e   = q(i,j,k,QREINT)
              eos_state % xn  = q(i,j,k,QFS:QFS+nspec-1)
-             eos_state % aux = q(i,j,k,QFX:QFX+naux-1)             
+             eos_state % aux = q(i,j,k,QFX:QFX+naux-1)
 
-             ! If necessary, reset the energy using small_temp
-             if ((allow_negative_energy .eq. 0) .and. (q(i,j,k,QREINT) .lt. ZERO)) then
-                q(i,j,k,QTEMP) = small_temp
-                eos_state % T =  q(i,j,k,QTEMP)
-
-                call eos(eos_input_rt, eos_state, .false., pt_index = pt_index)
-                q(i,j,k,QREINT) = eos_state % e
-
-                if (q(i,j,k,QREINT) .lt. ZERO) then
-                   print *,'   '
-                   print *,'>>> Error: Castro_advection_3d::ctoprim ',i,j,k
-                   print *,'>>> ... new e from eos (input_rt) call is negative ' &
-                        ,q(i,j,k,QREINT)
-                   print *,'    '
-                   call bl_error("Error:: Castro_advection_3d.f90 :: ctoprim")
-                end if
-             end if
-
-             eos_state % e = q(i,j,k,QREINT)
-
-             call eos(eos_input_re, eos_state, .false., pt_index = pt_index)
+             call eos(eos_input_re, eos_state)
 
              q(i,j,k,QTEMP)  = eos_state % T
              q(i,j,k,QREINT) = eos_state % e
              q(i,j,k,QPRES)  = eos_state % p
 
-             dpdrho(i,j,k) = eos_state % dpdr_e
-             dpde(i,j,k)   = eos_state % dpde
-             c(i,j,k)      = eos_state % cs
-             gamc(i,j,k)   = eos_state % gam1
+             dpdrho(i,j,k)   = eos_state % dpdr_e
+             dpde(i,j,k)     = eos_state % dpde
+             c(i,j,k)        = eos_state % cs
+             gamc(i,j,k)     = eos_state % gam1
 
-             csml(i,j,k) = max(small, small * c(i,j,k))
+             csml(i,j,k)     = max(small, small * c(i,j,k))
 
-             ! convert "e" back to "rho e"
-             q(i,j,k,QREINT) = q(i,j,k,QREINT)*q(i,j,k,QRHO)
-
-             q(i,j,k,QGAME) = q(i,j,k,QPRES)/q(i,j,k,QREINT) + ONE
-
-          end do
-       end do
-    end do
+             q(i,j,k,QREINT) = q(i,j,k,QREINT) * q(i,j,k,QRHO)
+             
+             q(i,j,k,QGAME)  = q(i,j,k,QPRES) / q(i,j,k,QREINT) + ONE
+             
+          enddo
+       enddo
+    enddo
 
     ! compute srcQ terms
-    do k = lo(3)-1, hi(3)+1
-       do j = lo(2)-1, hi(2)+1
-          do i = lo(1)-1, hi(1)+1
+    do k = loq(3), hiq(3)
+       do j = loq(2), hiq(2)
+          do i = loq(1), hiq(1)
              rhoinv = ONE/q(i,j,k,QRHO)
              srcQ(i,j,k,QRHO  ) = src(i,j,k,URHO)
              srcQ(i,j,k,QU    ) = (src(i,j,k,UMX) - q(i,j,k,QU) * srcQ(i,j,k,QRHO)) * rhoinv
@@ -982,9 +930,9 @@ contains
        n = upass_map(ipassive)
        nq = qpass_map(ipassive)
 
-       do k = lo(3)-1, hi(3)+1
-          do j = lo(2)-1, hi(2)+1
-             do i = lo(1)-1, hi(1)+1
+       do k = loq(3), hiq(3)
+          do j = loq(2), hiq(2)
+             do i = loq(1), hiq(1)
                 srcQ(i,j,k,nq) = ( src(i,j,k,n) - q(i,j,k,nq) * srcQ(i,j,k,QRHO) ) / &
                      q(i,j,k,QRHO)
              enddo
@@ -1053,7 +1001,7 @@ contains
                     q(q_l1,q_l2,q_l3,QU), &
                     q(q_l1,q_l2,q_l3,QV), &
                     q(q_l1,q_l2,q_l3,QW), &
-                    flatn,q_l1,q_l2,q_l3,q_h1,q_h2,q_h3)
+                    flatn,(/ q_l1,q_l2,q_l3 /), (/ q_h1,q_h2,q_h3 /))
     else
        flatn = ONE
     endif
@@ -1083,7 +1031,7 @@ contains
 
     use network, only : nspec, naux
     use eos_module
-    use meth_params_module, only : difmag, NVAR, URHO, UMX, UMY, UMZ, &
+    use meth_params_module, only : difmag, NVAR, UMX, UMY, UMZ, &
          UEDEN, UEINT, UTEMP, normalize_species
     use bl_constants_module
 
@@ -1185,7 +1133,7 @@ contains
              enddo
           enddo
        else 
-          ! update everything else with fluxes and source terms
+          ! update everything else with fluxes
           do k = lo(3),hi(3)
              do j = lo(2),hi(2)
                 do i = lo(1),hi(1)
@@ -1194,14 +1142,18 @@ contains
                    uout(i,j,k,n) = uin(i,j,k,n) &
                           + ( flux1(i,j,k,n) - flux1(i+1,j,k,n) &
                           +   flux2(i,j,k,n) - flux2(i,j+1,k,n) &
-                          +   flux3(i,j,k,n) - flux3(i,j,k+1,n)) * volinv &
-                          +   dt * src(i,j,k,n)
+                          +   flux3(i,j,k,n) - flux3(i,j,k+1,n)) * volinv
+
                    !
-                   ! Add the source term to (rho e)
+                   ! Add the p div(u) source term to (rho e)
                    !
                    if (n .eq. UEINT) then
                       uout(i,j,k,n) = uout(i,j,k,n) - dt * pdivu(i,j,k)
-                   else if (n .eq. UMX) then
+                   endif
+                   
+                   ! Add up some diagnostic quantities.
+                      
+                   if (n .eq. UMX) then
                       xmom_added_flux = xmom_added_flux + &
                            ( flux1(i,j,k,n) - flux1(i+1,j,k,n) &
                          +   flux2(i,j,k,n) - flux2(i,j+1,k,n) &
@@ -1386,12 +1338,10 @@ contains
                                      lo,hi,mass_added,eint_added,eden_added,verbose)
     
     use network, only : nspec, naux
-    use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UTEMP, UEDEN, UEINT, UFS, UFX, &
-                                     UFA, small_dens, small_temp, nadv
+    use meth_params_module, only : NVAR, URHO, UMX, UMY, UMZ, UTEMP, UEDEN, UEINT, UFS, &
+                                   small_dens, small_temp, npassive, upass_map
     use bl_constants_module
-    use eos_type_module, only : eos_t
-    use eos_module, only : eos
-    use eos_data_module, only : eos_input_rt
+    use eos_module
 
     implicit none
 
@@ -1403,7 +1353,7 @@ contains
     double precision :: mass_added, eint_added, eden_added
     
     ! Local variables
-    integer          :: i,ii,j,jj,k,kk,n
+    integer          :: i,ii,j,jj,k,kk,n,ipassive
     integer          :: i_set, j_set, k_set
     double precision :: max_dens
     
@@ -1467,19 +1417,18 @@ contains
 
                 if (max_dens < small_dens) then
 
-                   do n = UFS, UFS+nspec-1
-                      uout(i,j,k,n) = uout(i_set,j_set,k_set,n) * (small_dens / uout(i,j,k,URHO))
-                   end do
-                   do n = UFX, UFX+naux-1
-                      uout(i,j,k,n) = uout(i_set,j_set,k_set,n) * (small_dens / uout(i,j,k,URHO))
-                   end do
-                   do n = UFA, UFA+nadv-1
-                      uout(i,j,k,n) = uout(i_set,j_set,k_set,n) * (small_dens / uout(i,j,k,URHO))
+                   i_set = i
+                   j_set = j
+                   k_set = k
+                   
+                   do ipassive = 1, npassive
+                      n = upass_map(ipassive)
+                      uout(i,j,k,n) = uout(i,j,k,n) * (small_dens / uout(i,j,k,URHO))
                    end do
 
                    eos_state % rho = small_dens
                    eos_state % T   = small_temp
-                   eos_state % xn  = uout(i,j,k,UFS:UFS+nspec-1) / uout(i,j,k,URHO)
+                   eos_state % xn  = uout(i,j,k,UFS:UFS+nspec-1) / small_dens
 
                    call eos(eos_input_rt, eos_state)
 
@@ -1517,13 +1466,8 @@ contains
                 uout(i,j,k,UMY  ) = uout(i_set,j_set,k_set,UMY  )
                 uout(i,j,k,UMZ  ) = uout(i_set,j_set,k_set,UMZ  )
    
-                do n = UFS, UFS+nspec-1
-                   uout(i,j,k,n) = uout(i_set,j_set,k_set,n)
-                end do
-                do n = UFX, UFX+naux-1
-                   uout(i,j,k,n) = uout(i_set,j_set,k_set,n)
-                end do
-                do n = UFA, UFA+nadv-1
+                do ipassive = 1, npassive
+                   n = upass_map(ipassive)
                    uout(i,j,k,n) = uout(i_set,j_set,k_set,n)
                 end do
                 
@@ -1542,7 +1486,7 @@ contains
        eint_added = eint_added + final_eint - initial_eint
        eden_added = eden_added + final_eden - initial_eden
     endif
-    
+
   end subroutine enforce_minimum_density
 
 ! :::

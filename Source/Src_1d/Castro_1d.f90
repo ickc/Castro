@@ -8,24 +8,18 @@
                           uout,uout_l1,uout_h1,&
                           ugdnv,ugdnv_l1,ugdnv_h1,&
                           src,src_l1,src_h1, &
-                          grav,gv_l1,gv_h1, &
                           delta,dt,&
                           flux,flux_l1,flux_h1,&
                           area,area_l1,area_h1,&
                           dloga,dloga_l1,dloga_h1,&
                           vol,vol_l1,vol_h1,courno,verbose,&
                           mass_added,eint_added,eden_added,&
-                          xmom_added_flux, &
-                          xmom_added_grav, &
-                          xmom_added_sponge, &
-                          E_added_flux, E_added_grav, E_added_sponge)
+                          xmom_added_flux,ymom_added_flux,zmom_added_flux,&
+                          E_added_flux)
 
-      use meth_params_module, only : QVAR, QU, NVAR, NHYP, URHO, &
-                                     do_sponge, &
-                                     normalize_species, use_flattening
-      use advection_module, only : umeth1d, ctoprim, consup, enforce_minimum_density, &
-           normalize_new_species
-      use sponge_module, only : sponge
+
+      use meth_params_module, only : QVAR, QU, NVAR, NHYP, normalize_species
+      use advection_module  , only : umeth1d, ctoprim, consup, enforce_minimum_density, normalize_new_species
       use bl_constants_module
 
       implicit none
@@ -41,12 +35,10 @@
       integer dloga_l1,dloga_h1
       integer vol_l1,vol_h1
       integer src_l1,src_h1
-      integer gv_l1,gv_h1
       double precision   uin(  uin_l1:  uin_h1,NVAR)
       double precision  uout( uout_l1: uout_h1,NVAR)
       double precision ugdnv(ugdnv_l1:ugdnv_h1)
       double precision   src(  src_l1:  src_h1,NVAR)
-      double precision  grav(   gv_l1:   gv_h1     )
       double precision  flux( flux_l1: flux_h1,NVAR)
       double precision  area( area_l1: area_h1     )
       double precision dloga(dloga_l1:dloga_h1     )
@@ -64,8 +56,8 @@
       double precision, allocatable:: srcQ(:,:)
       double precision, allocatable:: pdivu(:)
 
-      double precision :: dx,E_added_flux,E_added_grav,E_added_sponge
-      double precision :: xmom_added_flux, xmom_added_grav, xmom_added_sponge
+      double precision :: dx,E_added_flux
+      double precision :: xmom_added_flux,ymom_added_flux,zmom_added_flux
       double precision :: mass_added, eint_added, eden_added
       integer i,ngf,ngq
       integer q_l1, q_h1
@@ -82,7 +74,7 @@
       allocate( flatn(q_l1:q_h1))
       allocate(  csml(q_l1:q_h1))
 
-      allocate(  srcQ(lo(1)-1:hi(1)+1,QVAR))
+      allocate(  srcQ(q_l1:q_h1,QVAR))
 
       allocate(   div(lo(1):hi(1)+1))
       allocate( pdivu(lo(1):hi(1)  ))
@@ -97,13 +89,12 @@
       call ctoprim(lo,hi,uin,uin_l1,uin_h1, &
                    q,c,gamc,csml,flatn,q_l1,q_h1, &
                    src,src_l1,src_h1, &
-                   srcQ,lo(1)-1,hi(1)+1, &
+                   srcQ,q_l1,q_h1, &
                    courno,dx,dt,ngq,ngf)
 
       call umeth1d(lo,hi,domlo,domhi, &
                    q,c,gamc,csml,flatn,q_l1,q_h1, &
-                   srcQ, lo(1)-1,hi(1)+1, &
-                   grav, gv_l1, gv_h1, &
+                   srcQ, q_l1,q_h1, &
                    lo(1),hi(1),dx,dt, &
                    flux,flux_l1,flux_h1, &
                    pgdnv,lo(1),hi(1)+1, &
@@ -126,11 +117,11 @@
            uout,uout_l1,uout_h1, &
            pgdnv,lo(1),hi(1)+1, &
            src , src_l1, src_h1, &
-           grav,  gv_l1,  gv_h1, &
            flux,flux_l1,flux_h1, &
            area,area_l1,area_h1, &
            vol , vol_l1, vol_h1, &
-           div ,pdivu,lo,hi,dx,dt)
+           div ,pdivu,lo,hi,dx,dt,E_added_flux, &
+           xmom_added_flux,ymom_added_flux,zmom_added_flux)
 
       ! Enforce the density >= small_dens.
       call enforce_minimum_density(uin,uin_l1,uin_h1,uout,uout_l1,uout_h1,lo,hi,&
@@ -143,18 +134,7 @@
       if (normalize_species .eq. 1) &
          call normalize_new_species(uout,uout_l1,uout_h1,lo,hi)
 
-      if (do_sponge .eq. 1) &
-           call sponge(uout,uout_l1,uout_h1,lo,hi,time,dt,dx,domlo,domhi,&
-                       E_added_sponge,xmom_added_sponge)
-
       deallocate(q,c,gamc,flatn,csml,srcQ,div,pdivu,pgdnv)
-
-!     if ( (is_finest_level      .eq. 1) .and. &
-!          (lo(1) .eq. 0               ) ) then
-!        print *,'CEN0  ',time, uin(0,URHO)
-!        print *,'CEN1  ',time, uin(1,URHO)
-!        print *,'CEN2  ',time, uin(2,URHO)
-!     end if
 
       end subroutine ca_umdrv
 
@@ -193,67 +173,6 @@
       enddo
 
       end subroutine ca_check_initial_species
-
-! :: ----------------------------------------------------------
-! :: Volume-weight average the fine grid data onto the coarse
-! :: grid.  Overlap is given in coarse grid coordinates.
-! ::
-! :: INPUTS / OUTPUTS:
-! ::  crse      <=  coarse grid data
-! ::  nvar	 => number of components in arrays
-! ::  fine       => fine grid data
-! ::  lo,hi      => index limits of overlap (crse grid)
-! ::  lrat       => refinement ratio
-! ::
-! :: NOTE:
-! ::  Assumes all data cell centered
-! :: ----------------------------------------------------------
-! ::
-      subroutine ca_avgdown (crse,c_l1,c_h1,nvar, &
-           cv,cv_l1,cv_h1, &
-           fine,f_l1,f_h1, &
-           fv,fv_l1,fv_h1,lo,hi,lrat)
-
-      use bl_constants_module
-
-      implicit none
-
-      integer c_l1,c_h1
-      integer cv_l1,cv_h1
-      integer f_l1,f_h1
-      integer fv_l1,fv_h1
-      integer lo(1), hi(1)
-      integer nvar, lrat(1)
-      double precision crse(c_l1:c_h1,nvar)
-      double precision cv(cv_l1:cv_h1)
-      double precision fine(f_l1:f_h1,nvar)
-      double precision fv(fv_l1:fv_h1)
-
-      integer i, n, ic, ioff
- 
-      do n = 1, nvar
- 
-!        Set coarse grid to zero on overlap
-         do ic = lo(1), hi(1)
-            crse(ic,n) = ZERO
-         enddo
-  
-!        Sum fine data
-         do ioff = 0, lrat(1)-1
-            do ic = lo(1), hi(1)
-               i = ic*lrat(1) + ioff
-               crse(ic,n) = crse(ic,n) + fv(i) * fine(i,n)
-            enddo
-         enddo
-             
-!        Divide out by volume weight
-         do ic = lo(1), hi(1)
-            crse(ic,n) = crse(ic,n) / cv(ic)
-         enddo
-            
-      enddo
-
-      end subroutine ca_avgdown
 
 ! :::
 ! ::: ------------------------------------------------------------------

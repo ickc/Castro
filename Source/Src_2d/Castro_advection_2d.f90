@@ -32,8 +32,6 @@ contains
 
   subroutine umeth2d(q, c, gamc, csml, flatn, qd_l1, qd_l2, qd_h1, qd_h2,&
                      srcQ, src_l1, src_l2, src_h1, src_h2, &
-                     grav, gv_l1, gv_l2, gv_h1, gv_h2, &
-                     rot, rt_l1, rt_l2, rt_h1, rt_h2, &
                      ilo1, ilo2, ihi1, ihi2, dx, dy, dt, &
                      flux1, fd1_l1, fd1_l2, fd1_h1, fd1_h2, &
                      flux2, fd2_l1, fd2_l2, fd2_h1, fd2_h2, &
@@ -62,8 +60,6 @@ contains
     integer qd_l1, qd_l2, qd_h1, qd_h2
     integer dloga_l1, dloga_l2, dloga_h1, dloga_h2
     integer src_l1, src_l2, src_h1, src_h2
-    integer gv_l1, gv_l2, gv_h1, gv_h2
-    integer rt_l1, rt_l2, rt_h1, rt_h2
     integer fd1_l1, fd1_l2, fd1_h1, fd1_h2
     integer fd2_l1, fd2_l2, fd2_h1, fd2_h2
     integer vf1_l1, vf1_l2, vf1_h1, vf1_h2
@@ -85,8 +81,6 @@ contains
     double precision  csml(qd_l1:qd_h1,qd_l2:qd_h2)
     double precision     c(qd_l1:qd_h1,qd_l2:qd_h2)
     double precision  srcQ(src_l1:src_h1,src_l2:src_h2,QVAR)
-    double precision  grav( gv_l1: gv_h1, gv_l2: gv_h2,2)
-    double precision   rot( rt_l1: rt_h1, rt_l2: rt_h2,2)
     double precision dloga(dloga_l1:dloga_h1,dloga_l2:dloga_h2)
     double precision pgdx(pgdx_l1:pgdx_h1,pgdx_l2:pgdx_h2)
     double precision pgdy(pgdy_l1:pgdy_h1,pgdy_l2:pgdy_h2)
@@ -170,14 +164,13 @@ contains
                   qxm,qxp,qym,qyp,ilo1-1,ilo2-1,ihi1+2,ihi2+2, &
                   vf1,vf1_l1,vf1_l2,vf1_h1,vf1_h2, &
                   vf2,vf2_l1,vf2_l2,vf2_h1,vf2_h2, &                  
-                  grav,gv_l1,gv_l2,gv_h1,gv_h2, &
+                  srcQ,src_l1,src_l2,src_h1,src_h2, &
                   ilo1,ilo2,ihi1,ihi2,dx,dy,dt)
     else
        call trace_ppm(q,c,flatn,qd_l1,qd_l2,qd_h1,qd_h2, &
                       dloga,dloga_l1,dloga_l2,dloga_h1,dloga_h2, &
                       qxm,qxp,qym,qyp,ilo1-1,ilo2-1,ihi1+2,ihi2+2, &
-                      grav,gv_l1,gv_l2,gv_h1,gv_h2, &
-                      rot,rt_l1,rt_l2,rt_h1,rt_h2, &
+                      srcQ,src_l1,src_l2,src_h1,src_h2, &
                       gamc,qd_l1,qd_l2,qd_h1,qd_h2, &
                       ilo1,ilo2,ihi1,ihi2,dx,dy,dt)
     end if
@@ -217,8 +210,6 @@ contains
                 gegdy, ugdy_l1, ugdy_l2, ugdy_h1, ugdy_h2, &
                 gamc, qd_l1, qd_l2, qd_h1, qd_h2, &
                 srcQ, src_l1, src_l2, src_h1, src_h2, &
-                grav, gv_l1, gv_l2, gv_h1, gv_h2, &
-                rot, rt_l1, rt_l2, rt_h1, rt_h2, &
                 hdt, hdtdy, &
                 ilo1-1, ihi1+1, ilo2, ihi2)
 
@@ -246,8 +237,6 @@ contains
                 gegdxtmp, ugdx_l1, ugdx_l2, ugdx_h1, ugdx_h2, &
                 gamc, qd_l1, qd_l2, qd_h1, qd_h2, &
                 srcQ,  src_l1,  src_l2,  src_h1,  src_h2, &
-                grav, gv_l1, gv_l2, gv_h1, gv_h2, &
-                rot, rt_l1, rt_l2, rt_h1, rt_h2, &
                 hdt, hdtdx, &
                 area1, area1_l1, area1_l2, area1_h1, area1_h2, &
                 vol, vol_l1, vol_l2, vol_h1, vol_h2, &
@@ -308,7 +297,7 @@ contains
     use network, only : nspec, naux
     use eos_module
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UEDEN, UEINT, UTEMP,&
-                                   QVAR, QRHO, QU, QV, QREINT, QPRES, QTEMP, QGAME, &
+                                   QVAR, QRHO, QU, QV, QW, QREINT, QPRES, QTEMP, QGAME, &
                                    QFS, QFX, &
                                    allow_negative_energy, small_temp, use_flattening, &
                                    npassive, upass_map, qpass_map, dual_energy_eta1, &
@@ -345,16 +334,13 @@ contains
     double precision, allocatable :: dpdX_er(:,:,:)
 
     integer          :: i, j
-    integer          :: pt_index(2)
     integer          :: ngp, ngf, loq(2), hiq(2)
-    integer          :: n, nq
+    integer          :: n, nq, ipassive
     double precision :: courx, coury, courmx, courmy
     double precision :: kineng
 
-    integer :: ipassive
-
     type (eos_t) :: eos_state
-    
+
     allocate( dpdrho(q_l1:q_h1,q_l2:q_h2))
     allocate(   dpde(q_l1:q_h1,q_l2:q_h2))
     allocate(dpdX_er(q_l1:q_h1,q_l2:q_h2,nspec))
@@ -370,6 +356,18 @@ contains
     do j = loq(2),hiq(2)
        do i = loq(1),hiq(1)
 
+          q(i,j,QRHO) = uin(i,j,URHO)
+          
+          ! Load passively-advected quatities, c, into q, assuming they
+          ! arrived in uin as rho.c. Note that for DIM < 3, this includes
+          ! the transverse velocities that are not explicitly evolved.
+          do ipassive = 1, npassive
+             n  = upass_map(ipassive)
+             nq = qpass_map(ipassive)
+
+             q(i,j,nq) = uin(i,j,n)/q(i,j,QRHO)
+          enddo          
+          
           if (uin(i,j,URHO) .le. ZERO) then
              print *,'   '
              print *,'>>> Error: Castro_2d::ctoprim ',i,j
@@ -378,9 +376,7 @@ contains
              call bl_error("Error:: Castro_2d.f90 :: ctoprim")
           end if
           
-          q(i,j,QRHO) = uin(i,j,URHO)
-          q(i,j,QU) = uin(i,j,UMX)/uin(i,j,URHO)
-          q(i,j,QV) = uin(i,j,UMY)/uin(i,j,URHO)
+          q(i,j,QU:QV) = uin(i,j,UMX:UMY)/uin(i,j,URHO)
 
           ! Get the internal energy, which we'll use for determining the pressure.
           ! We use a dual energy formalism. If (E - K) < eta1 and eta1 is suitably small, 
@@ -388,8 +384,8 @@ contains
           ! Therefore we'll use the result of the separately updated internal energy equation.
           ! Otherwise, we'll set e = E - K.
 
-          kineng = HALF * q(i,j,QRHO) * (q(i,j,QU)**2 + q(i,j,QV)**2)
-
+          kineng = HALF * q(i,j,QRHO) * sum(q(i,j,QU:QW)**2)
+          
           if ( (uin(i,j,UEDEN) - kineng) / uin(i,j,UEDEN) .lt. dual_energy_eta1) then
              q(i,j,QREINT) = (uin(i,j,UEDEN) - kineng) / q(i,j,QRHO)
           else
@@ -398,18 +394,7 @@ contains
 
           q(i,j,QTEMP  ) = uin(i,j,UTEMP)
 
-          ! Load passively-advected quatities, c, into q, assuming they
-          ! arrived in uin as rho.c 
-          do ipassive = 1, npassive
-             n  = upass_map(ipassive)
-             nq = qpass_map(ipassive)
-
-             q(i,j,nq) = uin(i,j,n)/q(i,j,QRHO)
-          enddo
-
           ! Get gamc, p, T, c, csml using q state 
-          pt_index(:) = (/i, j/)
-
           eos_state % T   = q(i,j,QTEMP)
           eos_state % rho = q(i,j,QRHO)
           eos_state % xn  = q(i,j,QFS:QFS+nspec-1)
@@ -420,7 +405,7 @@ contains
              q(i,j,QTEMP) = small_temp
              eos_state % T = q(i,j,QTEMP)
 
-             call eos(eos_input_rt, eos_state, pt_index = pt_index)
+             call eos(eos_input_rt, eos_state)
              q(i,j,QREINT) = eos_state % e
 
              if (q(i,j,QREINT) .lt. ZERO) then
@@ -434,7 +419,7 @@ contains
 
           eos_state % e = q(i,j,QREINT)
 
-          call eos(eos_input_re, eos_state, pt_index = pt_index)
+          call eos(eos_input_re, eos_state)
 
           q(i,j,QTEMP)  = eos_state % T
           q(i,j,QREINT) = eos_state % e
@@ -474,16 +459,15 @@ contains
     endif
     
     ! Compute sources in terms of Q
-    do j = lo(2)-1, hi(2)+1
-       do i = lo(1)-1, hi(1)+1
+    do j = loq(2), hiq(2)
+       do i = loq(1), hiq(1)
           
           srcQ(i,j,QRHO  ) = src(i,j,URHO)
-          srcQ(i,j,QU    ) = (src(i,j,UMX) - q(i,j,QU) * srcQ(i,j,QRHO)) / q(i,j,QRHO)
-          srcQ(i,j,QV    ) = (src(i,j,UMY) - q(i,j,QV) * srcQ(i,j,QRHO)) / q(i,j,QRHO)
+          srcQ(i,j,QU:QV ) = (src(i,j,UMX:UMY) - q(i,j,QU:QV) * srcQ(i,j,QRHO)) / q(i,j,QRHO)
           ! S_rhoe = S_rhoE - u . (S_rhoU - 0.5 u S_rho)
-          srcQ(i,j,QREINT) = src(i,j,UEDEN) - q(i,j,QU) *src(i,j,UMX)   &
-                                            - q(i,j,QV) *src(i,j,UMY) + &
-               HALF * (q(i,j,QU)**2 + q(i,j,QV)**2) * srcQ(i,j,QRHO)
+          srcQ(i,j,QREINT) = src(i,j,UEDEN)                               &
+                           - dot_product(q(i,j,QU:QV),src(i,j,UMX:UMY))   &
+                           + HALF * sum(q(i,j,QU:QV)**2) * srcQ(i,j,QRHO)
           srcQ(i,j,QPRES ) = dpde(i,j) * &
                (srcQ(i,j,QREINT) - q(i,j,QREINT)*srcQ(i,j,QRHO)/q(i,j,QRHO))/q(i,j,QRHO) + &
                dpdrho(i,j) * srcQ(i,j,QRHO)! + &
@@ -498,8 +482,8 @@ contains
        n  = upass_map(ipassive)
        nq = qpass_map(ipassive)
 
-       do j = lo(2)-1, hi(2)+1
-          do i = lo(1)-1, hi(1)+1
+       do j = loq(2), hiq(2)
+          do i = loq(1), hiq(1)
              srcQ(i,j,nq) = ( src(i,j,n) - q(i,j,nq) * srcQ(i,j,QRHO) ) / q(i,j,QRHO)
           enddo
        enddo
@@ -544,11 +528,12 @@ contains
           loq(n)=lo(n)-ngf
           hiq(n)=hi(n)+ngf
        enddo
-       call uflaten(loq,hiq, &
+       call uflaten((/ loq(1), loq(2), 0 /), (/ hiq(1), hiq(2), 0 /), &
             q(q_l1,q_l2,QPRES), &
             q(q_l1,q_l2,QU), &
             q(q_l1,q_l2,QV), &
-            flatn,q_l1,q_l2,q_h1,q_h2)
+            q(q_l1,q_l2,QW), &
+            flatn,(/ q_l1, q_l2, 0 /), (/ q_h1, q_h2, 0 /))
     else
        flatn = ONE
     endif
@@ -572,11 +557,11 @@ contains
                      area2,area2_l1,area2_l2,area2_h1,area2_h2, &
                      vol,vol_l1,vol_l2,vol_h1,vol_h2, &
                      div,pdivu,lo,hi,dx,dy,dt,E_added_flux, &
-                     xmom_added_flux,ymom_added_flux)
+                     xmom_added_flux,ymom_added_flux,zmom_added_flux)
 
     use eos_module
     use network, only : nspec, naux
-    use meth_params_module, only : difmag, NVAR, UMX, UMY, &
+    use meth_params_module, only : difmag, NVAR, UMX, UMY, UMZ, &
                                    UEDEN, UEINT, UTEMP, &
                                    normalize_species
     use bl_constants_module
@@ -608,7 +593,7 @@ contains
     double precision div(lo(1):hi(1)+1,lo(2):hi(2)+1)
     double precision pdivu(lo(1):hi(1),lo(2):hi(2))
     double precision dx, dy, dt, E_added_flux
-    double precision xmom_added_flux, ymom_added_flux
+    double precision xmom_added_flux, ymom_added_flux, zmom_added_flux
     
     integer i, j, n
 
@@ -625,7 +610,7 @@ contains
 
     ! correct the fluxes to include the effects of the artificial viscosity
     do n = 1, NVAR
-       if ( n.eq.UTEMP) then
+       if ( n .eq. UTEMP ) then
           flux1(:,:,n) = ZERO
           flux2(:,:,n) = ZERO
        else 
@@ -660,13 +645,16 @@ contains
              do i = lo(1),hi(1)
                 uout(i,j,n) = uin(i,j,n) + dt * &
                      ( flux1(i,j,n) - flux1(i+1,j,n) &
-                     +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j) &
-                     +   dt * src(i,j,n)
+                     +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j)
                 
                 if (n .eq. UEINT) then
-                   ! Add source term to (rho e)
+                   ! Add p div(u) source term to (rho e)
                    uout(i,j,UEINT) = uout(i,j,UEINT)  - dt * pdivu(i,j)
-                else if (n .eq. UEDEN) then
+                endif
+                   
+                ! Add up some diagnostic quantities
+                   
+                if (n .eq. UEDEN) then
                    E_added_flux = E_added_flux + dt * & 
                         ( flux1(i,j,n) - flux1(i+1,j,n) &
                         +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j) 
@@ -677,7 +665,11 @@ contains
                 else if (n .eq. UMY) then
                    ymom_added_flux = ymom_added_flux + dt * &
                         ( flux1(i,j,n) - flux1(i+1,j,n) &
-                        +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j) 
+                        +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j)
+                else if (n .eq. UMZ) then
+                   zmom_added_flux = zmom_added_flux + dt * &
+                        ( flux1(i,j,n) - flux1(i+1,j,n) &
+                        +   flux2(i,j,n) - flux2(i,j+1,n) ) / vol(i,j)                    
                 end if
              enddo
           enddo
@@ -852,7 +844,7 @@ contains
                                       lo, hi, mass_added, eint_added, eden_added, verbose)
     use network, only : nspec, naux
     use meth_params_module, only : NVAR, URHO, UMX, UMY, UEINT, UEDEN, UTEMP, &
-                                   UFS, UFX, UFA, small_dens, smalL_temp, nadv
+                                   UFS, small_dens, smalL_temp, npassive, upass_map
     use bl_constants_module
     use eos_type_module, only : eos_t
     use eos_module, only : eos_input_rt, eos
@@ -867,7 +859,7 @@ contains
     double precision :: mass_added, eint_added, eden_added
     
     ! Local variables
-    integer                       :: i,ii,j,jj,n
+    integer                       :: i,ii,j,jj,n,ipassive
     double precision              :: max_dens
     integer                       :: i_set, j_set
     double precision              :: initial_mass, final_mass
@@ -925,19 +917,17 @@ contains
 
              if (max_dens < small_dens) then
 
-                do n = UFS, UFS+nspec-1
-                   uout(i,j,n) = uout(i_set,j_set,n) * (small_dens / uout(i,j,URHO))
-                end do
-                do n = UFX, UFX+naux-1
-                   uout(i,j,n) = uout(i_set,j_set,n) * (small_dens / uout(i,j,URHO))
-                end do
-                do n = UFA, UFA+nadv-1
-                   uout(i,j,n) = uout(i_set,j_set,n) * (small_dens / uout(i,j,URHO))
+                i_set = i
+                j_set = j
+                
+                do ipassive = 1, npassive
+                   n = upass_map(ipassive)
+                   uout(i,j,n) = uout(i,j,n) * (small_dens / uout(i,j,URHO))
                 end do
 
                 eos_state % rho = small_dens
                 eos_state % T   = small_temp
-                eos_state % xn  = uout(i,j,UFS:UFS+nspec-1) / uout(i,j,URHO)
+                eos_state % xn  = uout(i,j,UFS:UFS+nspec-1) / small_dens
 
                 call eos(eos_input_rt, eos_state)
 
@@ -975,13 +965,8 @@ contains
              uout(i,j,UMX  ) = uout(i_set,j_set,UMX  )
              uout(i,j,UMY  ) = uout(i_set,j_set,UMY  )
 
-             do n = UFS, UFS+nspec-1
-                uout(i,j,n) = uout(i_set,j_set,n)
-             end do
-             do n = UFX, UFX+naux-1
-                uout(i,j,n) = uout(i_set,j_set,n)
-             end do
-             do n = UFA, UFA+nadv-1
+             do ipassive = 1, npassive
+                n = upass_map(ipassive)
                 uout(i,j,n) = uout(i_set,j_set,n)
              end do
              
