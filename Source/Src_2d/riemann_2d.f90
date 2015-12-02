@@ -415,8 +415,10 @@ contains
 
     double precision :: pstnm1
     double precision :: taul, taur, tauo
-   double precision :: ustarm, ustarp, ustnm1, ustnp1
+    double precision :: ustarm, ustarp, ustnm1, ustnp1
 
+    double precision :: v_face1, v_face2
+    
     double precision, parameter :: weakwv = 1.d-3
 
     double precision, allocatable :: pstar_hist(:)
@@ -511,6 +513,15 @@ contains
              gcr = eos_state%gam1
           endif
 
+          !  pick face velocities based on direction          
+          if (idir.eq.1) then
+             v_face1 = vf(i,j,1)
+             v_face2 = vf(i,j,2)
+          else
+             v_face1 = vf(i,j,2)
+             v_face2 = vf(i,j,1)
+          endif          
+          
           ! common quantities
           taul = ONE/rl
           taur = ONE/rr
@@ -647,7 +658,7 @@ contains
           ! sample the solution -- here we look first at the direction
           ! that the contact is moving.  This tells us if we need to
           ! worry about the L/L* states or the R*/R states.
-          if (ustar .gt. ZERO) then
+          if (ustar .gt. -v_face1) then
              ro = rl
              uo = ul
              po = pl
@@ -656,7 +667,7 @@ contains
              gamco = gcl
              gameo = gamel
 
-          else if (ustar .lt. ZERO) then
+          else if (ustar .lt. -v_face1) then
              ro = rr
              uo = ur
              po = pr
@@ -728,10 +739,10 @@ contains
 
           ! the transverse velocity states only depend on the
           ! direction that the contact moves
-          if (ustar .gt. ZERO) then
+          if (ustar .gt. -v_face1) then
              vgdnv = vl
              wgdnv = v2l
-          else if (ustar .lt. ZERO) then
+          else if (ustar .lt. -v_face1) then
              vgdnv = vr
              wgdnv = v2r
           else
@@ -766,14 +777,9 @@ contains
           pgdnv(i,j) = max(pgdnv(i,j),small_pres)
 
           ! Add face velocities.
-
-          if (idir .eq. 1) then
-             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,1)
-             vgdnv = vgdnv + vf(i,j,2)
-          else
-             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,2)
-             vgdnv = vgdnv + vf(i,j,1)
-          endif          
+          
+          ugdnv(i,j) = ugdnv(i,j) + v_face1
+          vgdnv      = vgdnv      + v_face2          
           
           ! Enforce that fluxes through a symmetry plane or wall are hard zero.
           ugdnv(i,j) = bc_test(idir, i, j, domlo, domhi) * ugdnv(i,j)
@@ -923,6 +929,7 @@ contains
     double precision :: ro, uo, po, reo, co, gamco, entho
     double precision :: sgnm, spin, spout, ushock, frac
     double precision :: wsmall, csmall,qavg
+    double precision :: v_face1, v_face2
 
     !************************************************************
     !  set min/max based on normal direction
@@ -970,6 +977,15 @@ contains
              v2r = qr(i,j,QW)
           endif
 
+          !  pick face velocities based on direction          
+          if (idir.eq.1) then
+             v_face1 = vf(i,j,1)
+             v_face2 = vf(i,j,2)
+          else
+             v_face1 = vf(i,j,2)
+             v_face2 = vf(i,j,1)
+          endif
+          
           pr = qr(i,j,QPRES)
           rer = qr(i,j,QREINT)
 
@@ -988,13 +1004,13 @@ contains
              ustar = ZERO
           endif
 
-          if (ustar .gt. ZERO) then
+          if (ustar .gt. -v_face1) then
              ro = rl
              uo = ul
              po = pl
              reo = rel
              gamco = gamcl(i,j)
-          else if (ustar .lt. ZERO) then
+          else if (ustar .lt. -v_face1) then
              ro = rr
              uo = ur
              po = pr
@@ -1034,10 +1050,10 @@ contains
           frac = (ONE + (spout + spin)/scr)*HALF
           frac = max(ZERO,min(ONE,frac))
 
-          if (ustar .gt. ZERO) then
+          if (ustar .gt. -v_face1) then
              vgd = vl
              wgd = v2l
-          else if (ustar .lt. ZERO) then
+          else if (ustar .lt. -v_face1) then
              vgd = vr
              wgd = v2r
           else
@@ -1066,14 +1082,9 @@ contains
           gegdnv(i,j) = pgdnv(i,j)/regd + 1.0d0
 
           ! Add face velocities.
-
-          if (idir .eq. 1) then
-             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,1)
-             vgd        = vgd        + vf(i,j,2)
-          else
-             ugdnv(i,j) = ugdnv(i,j) + vf(i,j,2)
-             vgd        = vgd        + vf(i,j,1)
-          endif          
+          
+          ugdnv(i,j) = ugdnv(i,j) + v_face1
+          vgd        = vgd        + v_face2
 
           ! enforce that the fluxes through a symmetry plane or wall are zero
           ugdnv(i,j) = bc_test(idir, i, j, domlo, domhi) * ugdnv(i,j)
