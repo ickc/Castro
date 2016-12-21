@@ -125,7 +125,7 @@ contains
     double precision rflux3(rfd3_lo(1):rfd3_hi(1),rfd3_lo(2):rfd3_hi(2),rfd3_lo(3):rfd3_hi(3),0:ngroups-1)
 #endif
 
-    double precision :: dxinv, dyinv, dzinv
+    !double precision :: dxinv, dyinv, dzinv
     double precision :: dtdx, dtdy, dtdz, hdt
     double precision :: cdtdx, cdtdy, cdtdz
     double precision :: hdtdx, hdtdy, hdtdz
@@ -296,12 +296,12 @@ contains
     call bl_allocate(shk, shk_lo, shk_hi)
 
     ! Local constants
-    dxinv = ONE/dx(1)
-    dyinv = ONE/dx(2)
-    dzinv = ONE/dx(3)
-    dtdx = dt*dxinv
-    dtdy = dt*dyinv
-    dtdz = dt*dzinv
+    !dxinv = ONE/dx(1)
+    !dyinv = ONE/dx(2)
+    !dzinv = ONE/dx(3)
+    dtdx = dt/dx(1)
+    dtdy = dt/dx(2)
+    dtdz = dt/dx(3)
     hdt = HALF*dt
     hdtdx = HALF*dtdx
     hdtdy = HALF*dtdy
@@ -725,7 +725,7 @@ contains
                 do i = lo(1),hi(1)
                    pdivu(i,j,k3d-1) = pdivu(i,j,k3d-1) +  &
                         HALF*(qgdnvzf(i,j,kc,GDPRES) + qgdnvzf(i,j,km,GDPRES)) * &
-                             (qgdnvzf(i,j,kc,GDW) - qgdnvzf(i,j,km,GDW))*dzinv
+                             (qgdnvzf(i,j,kc,GDW) - qgdnvzf(i,j,km,GDW))/dx(3)
                 end do
              end do
           end if
@@ -872,9 +872,9 @@ contains
                 do i = lo(1),hi(1)
                    pdivu(i,j,k3d-1) = pdivu(i,j,k3d-1) +  &
                         HALF*(qgdnvxf(i+1,j,km,GDPRES) + qgdnvxf(i,j,km,GDPRES)) *  &
-                             (qgdnvxf(i+1,j,km,GDU) - qgdnvxf(i,j,km,GDU))*dxinv + &
+                             (qgdnvxf(i+1,j,km,GDU) - qgdnvxf(i,j,km,GDU))/dx(1) + &
                         HALF*(qgdnvyf(i,j+1,km,GDPRES) + qgdnvyf(i,j,km,GDPRES)) *  &
-                             (qgdnvyf(i,j+1,km,GDV) - qgdnvyf(i,j,km,GDV))*dyinv
+                             (qgdnvyf(i,j+1,km,GDV) - qgdnvyf(i,j,km,GDV))/dx(2)
                 end do
              end do
 
@@ -1245,12 +1245,12 @@ contains
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
 
-                volinv = ONE / vol(i,j,k)
+                !volinv = ONE / vol(i,j,k)
 
                 update(i,j,k,n) = update(i,j,k,n) + &
                      ( flux1(i,j,k,n) * area1(i,j,k) - flux1(i+1,j,k,n) * area1(i+1,j,k) + &
                        flux2(i,j,k,n) * area2(i,j,k) - flux2(i,j+1,k,n) * area2(i,j+1,k) + &
-                       flux3(i,j,k,n) * area3(i,j,k) - flux3(i,j,k+1,n) * area3(i,j,k+1) ) * volinv
+                       flux3(i,j,k,n) * area3(i,j,k) - flux3(i,j,k+1,n) * area3(i,j,k+1) ) / vol(i,j,k)
 
                 ! Add the p div(u) source term to (rho e).
                 if (n .eq. UEINT) then
