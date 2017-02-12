@@ -1550,6 +1550,21 @@ Castro::post_timestep (int iteration)
 	    reflux(level, level+1);
     }
 
+    // Add the deferred delta_phi contribution to the state now that we've completed the timestep.
+
+#ifdef SELF_GRAVITY
+    if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0) {
+
+      MultiFab::Add(get_new_data(PhiGrav_Type), *(gravity->get_delta_phi(level)), 0, 0, 1, 1);
+
+      for (int n = 0; n < BL_SPACEDIM; ++n)
+	gravity->plus_grad_phi_curr(level, gravity->get_grad_delta_phi(level));
+
+      gravity->get_new_grav_vector(level, get_new_data(Gravity_Type), get_state_data(Gravity_Type).curTime());
+
+    }
+#endif
+
     // Ensure consistency with finer grids.
 
     if (level < finest_level)
@@ -2237,9 +2252,35 @@ Castro::reflux(int crse_level, int fine_level)
 	    // 37 in the Castro I paper. The dimensions of dphi are therefore actually
 	    // phi / cm**2, which makes it correct for the RHS of the Poisson equation.
 
+	    // It is important to understand that we have to be careful about what we're actually
+	    // adding to this flux register. For reflux_strategy == 2, we can just add the fine grid
+	    // grad(phi) and subtract the coarse grid grad(phi) as the source to the sync solve.
+	    // This is because they both exist at the same simulation time so it's fair to compare them.
+	    // But if we're doing reflux_strategy == 1, the coarse grid and fine grid are not yet at
+	    // the same simulation time when we call this sync, so we have to interpolate backwards
+	    // in time to figure out what the effective coarse grid potential would be. Then we can
+	    // use that as the sync source. Afterward, we have to save the resulting delta_phi and
+	    // delta_grad_phi and only add them back when we're computing the interpolated coarse
+	    // grid potential in the next fine timestep.
+
 	    for (int i = 0; i < BL_SPACEDIM; ++i) {
-		reg->CrseInit(gravity->get_grad_phi_curr(lev-1)[i], crse_lev.area[i], i, 0, 0, 1, -1.0);
+
+                MultiFab crse_grad_phi(gravity->get_grad_phi_curr(lev-1)[i].boxArray(), 1, 0);
+
+		const Real t_old = crse_lev.get_state_data(Gravity_Type).prevTime();
+		const Real t_new = crse_lev.get_state_data(Gravity_Type).curTime();
+		const Real time = fine_lev.get_state_data(Gravity_Type).curTime();
+		Real alpha = (time - t_old)/(t_new - t_old);
+		Real omalpha = 1.0 - alpha;
+
+		MultiFab::LinComb(crse_grad_phi,
+				  alpha, gravity->get_grad_phi_curr(lev-1)[i], 0,
+				  omalpha, gravity->get_grad_phi_prev(lev-1)[i], 0,
+				  0, 1, 0);
+
+		reg->CrseInit(crse_grad_phi, crse_lev.area[i], i, 0, 0, 1, -1.0);
 		reg->FineAdd(gravity->get_grad_phi_curr(lev)[i], fine_lev.area[i], i, 0, 0, 1, 1.0);
+
 	    }
 
 	    reg->Reflux(dphi[ilev], crse_lev.volume, 1.0, 0, 0, 1, crse_lev.geom);
@@ -2323,6 +2364,11 @@ Castro::avgDown ()
 #ifdef SELF_GRAVITY
   avgDown(Gravity_Type);
   avgDown(PhiGrav_Type);
+
+  if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0) {
+      int is_new = 1;
+      gravity->average_fine_ec_onto_crse_ec(level+1, is_new);
+  }
 #endif
 
 #ifdef ROTATION

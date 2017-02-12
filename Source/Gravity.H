@@ -33,6 +33,10 @@ public:
 
   void plus_grad_phi_curr(int level, PArray<MultiFab>& addend);
 
+  MultiFab* get_delta_phi(int level);
+
+  PArray<MultiFab>& get_grad_delta_phi(int level);
+
   void swapTimeLevels (int level);
 
   void update_max_rhs();
@@ -45,9 +49,7 @@ public:
 
   void solve_for_delta_phi (int                        crse_level, 
                             int                        fine_level,
-                            PArray<MultiFab>&          rhs,
-                            PArray<MultiFab>&          delta_phi,
-                            PArray<PArray<MultiFab> >& grad_delta_phi);
+                            PArray<MultiFab>&          rhs);
 
   void gravity_sync (int crse_level, int fine_level,
 		     const PArray<MultiFab>& drho, const PArray<MultiFab>& dphi);
@@ -147,6 +149,11 @@ protected:
   BCRec*       phys_bc;
 
   int   numpts_at_level;
+
+  // Deferred sync data
+
+  Array< MultiFab > delta_phi;
+  Array< PArray<MultiFab> > grad_delta_phi;
 
   static int   test_solves;
   static Real  mass_offset;

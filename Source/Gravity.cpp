@@ -54,6 +54,8 @@ Gravity::Gravity(Amr* Parent, int _finest_level, BCRec* _phys_bc, int _Density)
     LevelData(MAX_LEV),
     grad_phi_curr(MAX_LEV),
     grad_phi_prev(MAX_LEV),
+    delta_phi(MAX_LEV),
+    grad_delta_phi(MAX_LEV),
     grids(MAX_LEV),
     abs_tol(MAX_LEV),
     rel_tol(MAX_LEV),
@@ -285,6 +287,17 @@ Gravity::install_level (int                   level,
        for (int n=0; n<BL_SPACEDIM; ++n)
            grad_phi_curr[level].set(n,new MultiFab(level_data->getEdgeBoxArray(n),1,1));
 
+       delta_phi[level].clear();
+       delta_phi[level].define(grids[level], 1, 1, Fab_allocate);
+       delta_phi[level].setVal(0.0);
+
+       grad_delta_phi[level].clear();
+       grad_delta_phi[level].resize(BL_SPACEDIM,PArrayManage);
+       for (int n=0; n<BL_SPACEDIM; ++n) {
+	   grad_delta_phi[level].set(n,new MultiFab(level_data->getEdgeBoxArray(n),1,1));
+	   grad_delta_phi[level][n].setVal(0.0);
+       }
+
     } else if (gravity_type == "MonopoleGrav") {
 
         if (!Geometry::isAllPeriodic())
@@ -373,6 +386,18 @@ Gravity::plus_grad_phi_curr(int level, PArray<MultiFab>& addend)
 {
   for (int n = 0; n < BL_SPACEDIM; n++)
     grad_phi_curr[level][n].plus(addend[n],0,1,0);
+}
+
+MultiFab*
+Gravity::get_delta_phi(int level)
+{
+  return &delta_phi[level];
+}
+
+PArray<MultiFab>&
+Gravity::get_grad_delta_phi(int level)
+{
+  return grad_delta_phi[level];
 }
 
 void
@@ -465,16 +490,11 @@ Gravity::solve_for_phi (int               level,
 void
 Gravity::solve_for_delta_phi (int                        crse_level,
                               int                        fine_level,
-			      PArray<MultiFab>&          rhs,
-                              PArray<MultiFab>&          delta_phi,
-                              PArray<PArray<MultiFab> >& grad_delta_phi)
+			      PArray<MultiFab>&          rhs)
 {
     BL_PROFILE("Gravity::solve_for_delta_phi()");
 
     int nlevs = fine_level - crse_level + 1;
-
-    BL_ASSERT(grad_delta_phi.size() == nlevs);
-    BL_ASSERT(delta_phi.size() == nlevs);
 
     if (verbose && ParallelDescriptor::IOProcessor()) {
       std::cout << "... solving for delta_phi at crse_level = " << crse_level << std::endl;
@@ -530,19 +550,55 @@ Gravity::solve_for_delta_phi (int                        crse_level,
 
     int need_grad_phi = 1;
     int always_use_bnorm = (Geometry::isAllPeriodic()) ? 0 : 1;
-    fmg.solve(delta_phi, rhs, rel_eps, abs_eps, always_use_bnorm, need_grad_phi);
 
-    fmg.get_fluxes(grad_delta_phi);
+    // Create a temporary copy of delta_phi and grad_delta_phi that has
+    // the same number of levels as we are solving over, as that
+    // is that will be expected by the multigrid solver.
+
+    PArray<MultiFab> dphi(nlevs, PArrayManage);
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+       dphi.set(lev - crse_level, new MultiFab(grids[lev], 1, 1));
+       MultiFab::Copy(dphi[lev - crse_level], delta_phi[lev], 0, 0, 1, 1);
+    }
+
+    PArray< PArray<MultiFab> > gdphi(nlevs, PArrayManage);
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+       gdphi.set(lev - crse_level, new PArray<MultiFab>(BL_SPACEDIM, PArrayManage));
+
+        for (int n = 0; n < BL_SPACEDIM; ++n) {
+          gdphi[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 0));
+	  MultiFab::Copy(gdphi[lev - crse_level][n], grad_delta_phi[lev][n], 0, 0, 1, 0);
+       }
+    }
+
+    fmg.solve(dphi, rhs, rel_eps, abs_eps, always_use_bnorm, need_grad_phi);
+
+    fmg.get_fluxes(gdphi);
 
 #if (BL_SPACEDIM < 3)
     if (Geometry::IsSPHERICAL() || Geometry::IsRZ() ) {
 	for (int ilev = 0; ilev < nlevs; ++ilev)
 	{
 	    int amr_lev = ilev + crse_level;
-	    unweight_edges(amr_lev, grad_delta_phi[ilev]);
+	    unweight_edges(amr_lev, gdphi[ilev]);
 	}
     }
 #endif
+
+    // Copy the data back.
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+      MultiFab::Copy(delta_phi[lev], dphi[lev - crse_level], 0, 0, 1, 1);
+    }
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+        for (int n = 0; n < BL_SPACEDIM; ++n) {
+	  MultiFab::Copy(grad_delta_phi[lev][n], gdphi[lev - crse_level][n], 0, 0, 1, 0);
+       }
+    }
+
 }
 
 void
@@ -561,26 +617,11 @@ Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& d
 
     int nlevs = fine_level - crse_level + 1;
 
-    // Construct delta(phi) and delta(grad_phi). delta(phi)
-    // needs a ghost zone for holding the boundary condition
-    // in the same way that phi does.
-
-    PArray<MultiFab> delta_phi(nlevs, PArrayManage);
-
     for (int lev = crse_level; lev <= fine_level; ++lev) {
-       delta_phi.set(lev - crse_level, new MultiFab(grids[lev], 1, 1));
-       delta_phi[lev - crse_level].setVal(0.0);
-    }
-
-    PArray< PArray<MultiFab> > ec_gdPhi(nlevs, PArrayManage);
-
-    for (int lev = crse_level; lev <= fine_level; ++lev) {
-	ec_gdPhi.set(lev - crse_level, new PArray<MultiFab>(BL_SPACEDIM, PArrayManage));
-
-        for (int n = 0; n < BL_SPACEDIM; ++n) {
-	   ec_gdPhi[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 0));
-	   ec_gdPhi[lev - crse_level][n].setVal(0.0);
-	}
+      delta_phi[lev].setVal(0.0);
+      for (int n = 0; n < BL_SPACEDIM; ++n) {
+        grad_delta_phi[lev][n].setVal(0.0);
+      }
     }
 
     // Construct the boundary conditions for the Poisson solve.
@@ -648,7 +689,7 @@ Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& d
 
     // Do multi-level solve for delta_phi.
 
-    solve_for_delta_phi(crse_level, fine_level, rhs, delta_phi, ec_gdPhi);
+    solve_for_delta_phi(crse_level, fine_level, rhs);
 
     // In the all-periodic case we enforce that delta_phi averages to zero.
 
@@ -657,47 +698,7 @@ Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& d
 	Real local_correction = delta_phi[0].sum() / grids[crse_level].numPts();
 
 	for (int lev = crse_level; lev <= fine_level; ++lev)
-	    delta_phi[lev - crse_level].plus(-local_correction, 0, 1, 1);
-
-    }
-
-    // Add delta_phi to phi_new, and grad(delta_phi) to grad(delta_phi_curr) on each level.
-    // Update the cell-centered gravity too.
-
-    for (int lev = crse_level; lev <= fine_level; lev++) {
-
-	LevelData[lev].get_new_data(PhiGrav_Type).plus(delta_phi[lev - crse_level], 0, 1, 0);
-
-	for (int n = 0; n < BL_SPACEDIM; n++)
-	    grad_phi_curr[lev][n].plus(ec_gdPhi[lev - crse_level][n], 0, 1, 0);
-
-    	get_new_grav_vector(lev, LevelData[lev].get_new_data(Gravity_Type),
-			    LevelData[lev].get_state_data(State_Type).curTime());
-
-    }
-
-    int is_new = 1;
-
-    for (int lev = fine_level-1; lev >= crse_level; --lev)
-    {
-
-	// Average phi_new from fine to coarse level
-
-	const IntVect& ratio = parent->refRatio(lev);
-
-	BoxLib::average_down(LevelData[lev+1].get_new_data(PhiGrav_Type),
-			     LevelData[lev  ].get_new_data(PhiGrav_Type),
-			     0, 1, ratio);
-
-	// Average the edge-based grad_phi from finer to coarser level
-
-	average_fine_ec_onto_crse_ec(lev, is_new);
-
-	// Average down the gravitational acceleration too.
-
-	BoxLib::average_down(LevelData[lev+1].get_new_data(Gravity_Type),
-			     LevelData[lev  ].get_new_data(Gravity_Type),
-			     0, 1, ratio);
+	    delta_phi[lev].plus(-local_correction, 0, 1, 1);
 
     }
 
@@ -734,6 +735,10 @@ Gravity::GetCrsePhi(int level,
 	    phi_crse[mfi].copy(LevelData[level-1].get_new_data(PhiGrav_Type)[mfi], gtbx);
 	    phi_crse[mfi].mult(alpha, gtbx);
 	    phi_crse[mfi].plus(PhiCrseTemp);
+
+	    // Deferred sync: add delta_phi from the last gravity sync to the corase potential.
+
+	    phi_crse[mfi].plus(delta_phi[level-1][mfi]);
 	}
     }
 
@@ -775,6 +780,10 @@ Gravity::GetCrseGradPhi(int level,
 		grad_phi_crse[i][mfi].copy(grad_phi_curr[level-1][i][mfi], tbx);
 		grad_phi_crse[i][mfi].mult(alpha, tbx);
 		grad_phi_crse[i][mfi].plus(GradPhiCrseTemp);
+
+		// Deferred sync: add delta_phi from the last gravity sync to the corase potential.
+
+		grad_phi_crse[i][mfi].plus(grad_delta_phi[level-1][i][mfi]);
 	    }
         }
     }
