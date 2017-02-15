@@ -624,6 +624,19 @@ Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& d
       }
     }
 
+    // Construct a container for the right-hand-side (4 * pi * G * drho + dphi).
+    // We will temporarily divide it by a factor of Ggravity == 4 * pi * G, as
+    // this is the form expected by the boundary condition routine.
+
+    PArray<MultiFab> rhs(nlevs, PArrayManage);
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+	rhs.set(lev - crse_level, new MultiFab(LevelData[lev].boxArray(), 1, 0));
+	MultiFab::Copy(rhs[lev - crse_level], dphi[lev - crse_level], 0, 0, 1, 0);
+	rhs[lev - crse_level].mult(1.0/Ggravity);
+	MultiFab::Add(rhs[lev - crse_level], drho[lev - crse_level], 0, 0, 1, 0);
+    }
+
     // Construct the boundary conditions for the Poisson solve.
 
     if (crse_level == 0 && !crse_geom.isAllPeriodic()) {
@@ -633,33 +646,28 @@ Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& d
 
 #if (BL_SPACEDIM == 3)
       if ( direct_sum_bcs )
-        fill_direct_sum_BCs(crse_level,fine_level,drho,delta_phi[crse_level]);
+        fill_direct_sum_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
       else {
-        fill_multipole_BCs(crse_level,fine_level,drho,delta_phi[crse_level]);
+        fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
       }
 #elif (BL_SPACEDIM == 2)
       if (lnum > 0) {
-	fill_multipole_BCs(crse_level,fine_level,drho,delta_phi[crse_level]);
+	fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
       } else {
 	int fill_interior = 0;
-	make_radial_phi(crse_level,drho[0],delta_phi[crse_level],fill_interior);
+	make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
       }
 #else
       int fill_interior = 0;
-      make_radial_phi(crse_level,drho[0],delta_phi[crse_level],fill_interior);
+      make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
 #endif
 
     }
 
-    // Construct a container for the right-hand-side (4 * pi * G * drho + dphi).
-
-    PArray<MultiFab> rhs(nlevs, PArrayManage);
+    // Restore the factor of 4 * pi * G.
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
-	rhs.set(lev - crse_level, new MultiFab(LevelData[lev].boxArray(), 1, 0));
-	MultiFab::Copy(rhs[lev - crse_level], drho[lev - crse_level], 0, 0, 1, 0);
 	rhs[lev - crse_level].mult(Ggravity);
-	MultiFab::Add(rhs[lev - crse_level], dphi[lev - crse_level], 0, 0, 1, 0);
     }
 
     // In the all-periodic case we enforce that the RHS sums to zero.
