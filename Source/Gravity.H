@@ -47,12 +47,9 @@ public:
 		      int               is_new);
 
 
-  void solve_for_delta_phi (int                        crse_level, 
-                            int                        fine_level,
-                            PArray<MultiFab>&          rhs);
-
-  void gravity_sync (int crse_level, int fine_level,
-		     const PArray<MultiFab>& drho, const PArray<MultiFab>& dphi);
+  void solve_for_delta_phi(int crse_level, int fine_level,
+			   const PArray<MultiFab>& drho,
+			   const PArray<MultiFab>& dphi);		    
 
   void multilevel_solve_for_new_phi (int level, int finest_level,
                                      int use_previous_phi_as_guess = 0);

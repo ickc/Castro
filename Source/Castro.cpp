@@ -2294,7 +2294,7 @@ Castro::reflux(int crse_level, int fine_level)
 #ifdef SELF_GRAVITY
     if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0) {
 
-	gravity->gravity_sync(crse_level, fine_level, drho, dphi);
+	gravity->solve_for_delta_phi(crse_level, fine_level, drho, dphi);
 
         // Add the deferred delta_phi contribution temporarily for the purposes of calculating
 	// the updated new-time source terms on the coarse level.

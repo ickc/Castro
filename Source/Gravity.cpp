@@ -488,9 +488,9 @@ Gravity::solve_for_phi (int               level,
 }
 
 void
-Gravity::solve_for_delta_phi (int                        crse_level,
-                              int                        fine_level,
-			      PArray<MultiFab>&          rhs)
+Gravity::solve_for_delta_phi (int crse_level, int fine_level,
+			      const PArray<MultiFab>& drho,
+			      const PArray<MultiFab>& dphi)
 {
     BL_PROFILE("Gravity::solve_for_delta_phi()");
 
@@ -501,6 +501,89 @@ Gravity::solve_for_delta_phi (int                        crse_level,
       std::cout << "...                    up to fine_level = " << fine_level << std::endl;
     }
 
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+      delta_phi[lev].setVal(0.0);
+      for (int n = 0; n < BL_SPACEDIM; ++n) {
+        grad_delta_phi[lev][n].setVal(0.0);
+      }
+    }
+
+    // Construct a container for the right-hand-side (4 * pi * G * drho + dphi).
+    // We will temporarily divide it by a factor of Ggravity == 4 * pi * G, as
+    // this is the form expected by the boundary condition routine.
+
+    PArray<MultiFab> rhs(nlevs, PArrayManage);
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+	rhs.set(lev - crse_level, new MultiFab(LevelData[lev].boxArray(), 1, 0));
+	MultiFab::Copy(rhs[lev - crse_level], dphi[lev - crse_level], 0, 0, 1, 0);
+	rhs[lev - crse_level].mult(1.0/Ggravity);
+	MultiFab::Add(rhs[lev - crse_level], drho[lev - crse_level], 0, 0, 1, 0);
+    }
+
+    // Construct the boundary conditions for the Poisson solve.
+
+    const Geometry& crse_geom = parent->Geom(crse_level);
+
+    if (crse_level == 0 && !crse_geom.isAllPeriodic()) {
+
+	if (verbose && ParallelDescriptor::IOProcessor())
+         std::cout << " ... Making bc's for delta_phi at crse_level 0"  << std::endl;
+
+#if (BL_SPACEDIM == 3)
+      if ( direct_sum_bcs )
+        fill_direct_sum_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
+      else {
+        fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
+      }
+#elif (BL_SPACEDIM == 2)
+      if (lnum > 0) {
+	fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
+      } else {
+	int fill_interior = 0;
+	make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
+      }
+#else
+      int fill_interior = 0;
+      make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
+#endif
+
+    }
+
+    // Restore the factor of 4 * pi * G.
+
+    for (int lev = crse_level; lev <= fine_level; ++lev) {
+	rhs[lev - crse_level].mult(Ggravity);
+    }
+
+    // In the all-periodic case we enforce that the RHS sums to zero.
+    // We only do this if we're periodic and the coarse level covers the whole domain.
+    // In principle this could be true for level > 0, so we'll test on whether the number
+    // of points on the level is equal to the number of points possible on the level.
+    // Note that since we did the average-down, we can stick with the data on the coarse
+    // level since the averaging down is conservative.
+
+    const Box& crse_domain = crse_geom.Domain();
+
+    if (crse_geom.isAllPeriodic() && (grids[crse_level].numPts() == crse_domain.numPts()))
+    {
+
+	// We assume that if we're fully periodic then we're going to be in Cartesian
+	// coordinates, so to get the average value of the RHS we can divide the sum
+	// of the RHS by the number of points. This correction should probably be
+	// volume weighted if we somehow got here without being Cartesian.
+
+	Real local_correction = rhs[0].sum() / grids[crse_level].numPts();
+
+        if (verbose && ParallelDescriptor::IOProcessor())
+            std::cout << "WARNING: Adjusting RHS in solve_for_delta_phi by " << local_correction << '\n';
+
+	for (int lev = fine_level; lev >= crse_level; --lev)
+	    rhs[lev-crse_level].plus(-local_correction, 0, 1, 0);
+
+    }
+    
     PArray<Geometry> geom(nlevs);
 
     for (int ilev = 0; ilev < nlevs; ++ilev) {
@@ -555,34 +638,34 @@ Gravity::solve_for_delta_phi (int                        crse_level,
     // the same number of levels as we are solving over, as that
     // is that will be expected by the multigrid solver.
 
-    PArray<MultiFab> dphi(nlevs, PArrayManage);
+    PArray<MultiFab> dphi_loc(nlevs, PArrayManage);
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
-       dphi.set(lev - crse_level, new MultiFab(grids[lev], 1, 1));
-       MultiFab::Copy(dphi[lev - crse_level], delta_phi[lev], 0, 0, 1, 1);
+       dphi_loc.set(lev - crse_level, new MultiFab(grids[lev], 1, 1));
+       MultiFab::Copy(dphi_loc[lev - crse_level], delta_phi[lev], 0, 0, 1, 1);
     }
 
-    PArray< PArray<MultiFab> > gdphi(nlevs, PArrayManage);
+    PArray< PArray<MultiFab> > gdphi_loc(nlevs, PArrayManage);
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
-       gdphi.set(lev - crse_level, new PArray<MultiFab>(BL_SPACEDIM, PArrayManage));
+       gdphi_loc.set(lev - crse_level, new PArray<MultiFab>(BL_SPACEDIM, PArrayManage));
 
         for (int n = 0; n < BL_SPACEDIM; ++n) {
-          gdphi[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 0));
-	  MultiFab::Copy(gdphi[lev - crse_level][n], grad_delta_phi[lev][n], 0, 0, 1, 0);
+          gdphi_loc[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 0));
+	  MultiFab::Copy(gdphi_loc[lev - crse_level][n], grad_delta_phi[lev][n], 0, 0, 1, 0);
        }
     }
 
-    fmg.solve(dphi, rhs, rel_eps, abs_eps, always_use_bnorm, need_grad_phi);
+    fmg.solve(dphi_loc, rhs, rel_eps, abs_eps, always_use_bnorm, need_grad_phi);
 
-    fmg.get_fluxes(gdphi);
+    fmg.get_fluxes(gdphi_loc);
 
 #if (BL_SPACEDIM < 3)
     if (Geometry::IsSPHERICAL() || Geometry::IsRZ() ) {
 	for (int ilev = 0; ilev < nlevs; ++ilev)
 	{
 	    int amr_lev = ilev + crse_level;
-	    unweight_edges(amr_lev, gdphi[ilev]);
+	    unweight_edges(amr_lev, gdphi_loc[ilev]);
 	}
     }
 #endif
@@ -590,114 +673,14 @@ Gravity::solve_for_delta_phi (int                        crse_level,
     // Copy the data back.
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
-      MultiFab::Copy(delta_phi[lev], dphi[lev - crse_level], 0, 0, 1, 1);
+      MultiFab::Copy(delta_phi[lev], dphi_loc[lev - crse_level], 0, 0, 1, 1);
     }
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
         for (int n = 0; n < BL_SPACEDIM; ++n) {
-	  MultiFab::Copy(grad_delta_phi[lev][n], gdphi[lev - crse_level][n], 0, 0, 1, 0);
+	  MultiFab::Copy(grad_delta_phi[lev][n], gdphi_loc[lev - crse_level][n], 0, 0, 1, 0);
        }
     }
-
-}
-
-void
-Gravity::gravity_sync (int crse_level, int fine_level, const PArray<MultiFab>& drho, const PArray<MultiFab>& dphi)
-{
-    BL_PROFILE("Gravity::gravity_sync()");
-
-    BL_ASSERT(parent->finestLevel()>crse_level);
-    if (verbose && ParallelDescriptor::IOProcessor()) {
-          std::cout << " ... gravity_sync at crse_level " << crse_level << '\n';
-          std::cout << " ...     up to finest_level     " << fine_level << '\n';
-    }
-
-    const Geometry& crse_geom = parent->Geom(crse_level);
-    const Box& crse_domain = crse_geom.Domain();
-
-    int nlevs = fine_level - crse_level + 1;
-
-    for (int lev = crse_level; lev <= fine_level; ++lev) {
-      delta_phi[lev].setVal(0.0);
-      for (int n = 0; n < BL_SPACEDIM; ++n) {
-        grad_delta_phi[lev][n].setVal(0.0);
-      }
-    }
-
-    // Construct a container for the right-hand-side (4 * pi * G * drho + dphi).
-    // We will temporarily divide it by a factor of Ggravity == 4 * pi * G, as
-    // this is the form expected by the boundary condition routine.
-
-    PArray<MultiFab> rhs(nlevs, PArrayManage);
-
-    for (int lev = crse_level; lev <= fine_level; ++lev) {
-	rhs.set(lev - crse_level, new MultiFab(LevelData[lev].boxArray(), 1, 0));
-	MultiFab::Copy(rhs[lev - crse_level], dphi[lev - crse_level], 0, 0, 1, 0);
-	rhs[lev - crse_level].mult(1.0/Ggravity);
-	MultiFab::Add(rhs[lev - crse_level], drho[lev - crse_level], 0, 0, 1, 0);
-    }
-
-    // Construct the boundary conditions for the Poisson solve.
-
-    if (crse_level == 0 && !crse_geom.isAllPeriodic()) {
-
-	if (verbose && ParallelDescriptor::IOProcessor())
-         std::cout << " ... Making bc's for delta_phi at crse_level 0"  << std::endl;
-
-#if (BL_SPACEDIM == 3)
-      if ( direct_sum_bcs )
-        fill_direct_sum_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
-      else {
-        fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
-      }
-#elif (BL_SPACEDIM == 2)
-      if (lnum > 0) {
-	fill_multipole_BCs(crse_level,fine_level,rhs,delta_phi[crse_level]);
-      } else {
-	int fill_interior = 0;
-	make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
-      }
-#else
-      int fill_interior = 0;
-      make_radial_phi(crse_level,rhs[0],delta_phi[crse_level],fill_interior);
-#endif
-
-    }
-
-    // Restore the factor of 4 * pi * G.
-
-    for (int lev = crse_level; lev <= fine_level; ++lev) {
-	rhs[lev - crse_level].mult(Ggravity);
-    }
-
-    // In the all-periodic case we enforce that the RHS sums to zero.
-    // We only do this if we're periodic and the coarse level covers the whole domain.
-    // In principle this could be true for level > 0, so we'll test on whether the number
-    // of points on the level is equal to the number of points possible on the level.
-    // Note that since we did the average-down, we can stick with the data on the coarse
-    // level since the averaging down is conservative.
-
-    if (crse_geom.isAllPeriodic() && (grids[crse_level].numPts() == crse_domain.numPts()))
-    {
-
-	// We assume that if we're fully periodic then we're going to be in Cartesian
-	// coordinates, so to get the average value of the RHS we can divide the sum
-	// of the RHS by the number of points. This correction should probably be
-	// volume weighted if we somehow got here without being Cartesian.
-
-	Real local_correction = rhs[0].sum() / grids[crse_level].numPts();
-
-        if (verbose && ParallelDescriptor::IOProcessor())
-            std::cout << "WARNING: Adjusting RHS in gravity_sync solve by " << local_correction << '\n';
-
-	for (int lev = fine_level; lev >= crse_level; --lev)
-	    rhs[lev-crse_level].plus(-local_correction, 0, 1, 0);
-
-    }
-
-    // Do multi-level solve for delta_phi.
-
-    solve_for_delta_phi(crse_level, fine_level, rhs);
 
     // In the all-periodic case we enforce that delta_phi averages to zero.
 
