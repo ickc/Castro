@@ -2250,7 +2250,7 @@ Castro::reflux(int crse_level, int fine_level)
 
 	    for (int i = 0; i < BL_SPACEDIM; ++i) {
 
-                MultiFab crse_grad_phi(gravity->get_grad_phi_curr(lev-1)[i].boxArray(), 1, 0);
+                MultiFab crse_grad_phi(gravity->get_grad_phi_curr(lev-1)[i].boxArray(), 1, 1);
 
 		const Real t_old = crse_lev.get_state_data(Gravity_Type).prevTime();
 		const Real t_new = crse_lev.get_state_data(Gravity_Type).curTime();
@@ -2261,7 +2261,7 @@ Castro::reflux(int crse_level, int fine_level)
 		MultiFab::LinComb(crse_grad_phi,
 				  alpha, gravity->get_grad_phi_curr(lev-1)[i], 0,
 				  omalpha, gravity->get_grad_phi_prev(lev-1)[i], 0,
-				  0, 1, 0);
+				  0, 1, 1);
 
 
 		// Note that the scaling by the area here is corrected for by dividing by the
@@ -2373,9 +2373,12 @@ Castro::reflux(int crse_level, int fine_level)
 	    if (lev == parent->finestLevel()) {
 		subtract_deferred_sync = false;
 	    } else {
-		if (getLevel(lev+1).iteration == parent->nCycle(lev+1)) {
-		    subtract_deferred_sync = false;
-		}
+		subtract_deferred_sync = false;
+		for (int l = lev; l < fine_level; ++l)
+		    if (getLevel(l+1).iteration < parent->nCycle(l+1)) {
+			subtract_deferred_sync = true;
+			break;
+		    }
 	    }
 
 	    if (subtract_deferred_sync) {
@@ -2385,7 +2388,7 @@ Castro::reflux(int crse_level, int fine_level)
 		getLevel(lev).get_new_data(PhiGrav_Type).minus(*(gravity->get_delta_phi(lev)), 0, 1, 1);
 
 		for (int n = 0; n < BL_SPACEDIM; ++n)
-		    gravity->get_grad_phi_curr(lev)[n].minus(gravity->get_grad_delta_phi(lev)[n], 0, 1, 0);
+		    gravity->get_grad_phi_curr(lev)[n].minus(gravity->get_grad_delta_phi(lev)[n], 0, 1, 1);
 
 		// Recalculate the cell-centered gravity from the edge-centered gravity.
 

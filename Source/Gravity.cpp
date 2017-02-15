@@ -651,8 +651,8 @@ Gravity::solve_for_delta_phi (int crse_level, int fine_level,
        gdphi_loc.set(lev - crse_level, new PArray<MultiFab>(BL_SPACEDIM, PArrayManage));
 
         for (int n = 0; n < BL_SPACEDIM; ++n) {
-          gdphi_loc[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 0));
-	  MultiFab::Copy(gdphi_loc[lev - crse_level][n], grad_delta_phi[lev][n], 0, 0, 1, 0);
+          gdphi_loc[lev - crse_level].set(n, new MultiFab(LevelData[lev].getEdgeBoxArray(n), 1, 1));
+	  MultiFab::Copy(gdphi_loc[lev - crse_level][n], grad_delta_phi[lev][n], 0, 0, 1, 1);
        }
     }
 
@@ -678,7 +678,7 @@ Gravity::solve_for_delta_phi (int crse_level, int fine_level,
 
     for (int lev = crse_level; lev <= fine_level; ++lev) {
         for (int n = 0; n < BL_SPACEDIM; ++n) {
-	  MultiFab::Copy(grad_delta_phi[lev][n], gdphi_loc[lev - crse_level][n], 0, 0, 1, 0);
+	  MultiFab::Copy(grad_delta_phi[lev][n], gdphi_loc[lev - crse_level][n], 0, 0, 1, 1);
        }
     }
 
