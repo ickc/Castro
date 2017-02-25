@@ -492,6 +492,11 @@ Castro::initialize_advance(Real time, Real dt, int amr_iteration, int amr_ncycle
 	    rad_fluxes[dir].setVal(0.0);
 #endif
 
+#ifdef GRAVITY
+    for (int dir = 0; dir < 3; ++dir)
+	gfluxes[dir].setVal(0.0);
+#endif
+
 }
 
 
@@ -547,6 +552,18 @@ Castro::finalize_advance(Real time, Real dt, int amr_iteration, int amr_ncycle)
 
 	}
 #endif
+
+#ifdef GRAVITY
+	if (do_grav) {
+	    for (int i = 0; i < BL_SPACEDIM; ++i) {
+		if (level < parent->finestLevel())
+		    getLevel(level+1).gflux_reg.CrseInit(gfluxes[i], i, 0, 0, 1, flux_crse_scale);
+		if (level > 0)
+		    getLevel(level).gflux_reg.FineAdd(gfluxes[i], i, 0, 0, 1, flux_fine_scale);
+	    }
+	}
+#endif
+
 
     }
 

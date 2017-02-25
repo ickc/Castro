@@ -610,8 +610,11 @@ protected:
 #ifdef RADIATION
     FluxRegister rad_flux_reg;
 #endif
-#ifdef GRAVITY
+#ifdef SELF_GRAVITY
     FluxRegister phi_reg;
+#endif
+#ifdef GRAVITY
+    FluxRegister gflux_reg;
 #endif
 
     // Scalings for the flux registers.

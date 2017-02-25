@@ -653,6 +653,14 @@ Castro::initMFs()
 	    rad_fluxes.set(dir, new MultiFab(getEdgeBoxArray(dir), Radiation::nGroups, 0));
 #endif
 
+#ifdef GRAVITY
+    for (int dir = 0; dir < BL_SPACEDIM; ++dir)
+	gfluxes.set(dir, new MultiFab(getEdgeBoxArray(dir), 1, 0));
+
+    for (int dir = BL_SPACEDIM; dir < 3; ++dir)
+	gfluxes.set(dir, new MultiFab(grids, 1, 0));
+#endif
+
     if (do_reflux && level > 0) {
 
 	flux_reg.define(grids, crse_ratio, level, NUM_STATE);
@@ -679,7 +687,14 @@ Castro::initMFs()
 	}
 #endif
 
+#ifdef GRAVITY
+	if (do_grav) {
+	    gflux_reg.define(grids, crse_ratio, level, 1);
+	    gflux_reg.setVal(0.0);
+	}
+
     }
+#endif
 
     // Set the flux register scalings.
 
@@ -2013,6 +2028,8 @@ Castro::reflux(int crse_level, int fine_level)
 
     FluxRegister* reg;
 
+    PArray<MultiFab> temp_fluxes(3, PArrayManage);
+
     for (int lev = fine_level; lev > crse_level; --lev) {
 
 	reg = &getLevel(lev).flux_reg;
@@ -2044,8 +2061,6 @@ Castro::reflux(int crse_level, int fine_level)
 
 	// Also update the coarse fluxes MultiFabs using the reflux data. This should only make
 	// a difference if we re-evaluate the source terms later.
-
-	PArray<MultiFab> temp_fluxes(3, PArrayManage);
 
 	if (update_sources_after_reflux) {
 
@@ -2146,7 +2161,7 @@ Castro::reflux(int crse_level, int fine_level)
 
 	}
 
-#endif	
+#endif
 
 #ifdef SELF_GRAVITY
 	if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0)  {
@@ -2177,9 +2192,50 @@ Castro::reflux(int crse_level, int fine_level)
 
     // Do the sync solve across all levels.
 
+#ifdef GRAVITY
+
+    if (do_grav) {
+
 #ifdef SELF_GRAVITY
-    if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0)
-	gravity->gravity_sync(crse_level, fine_level, drho, dphi);
+	if (gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0)
+	    gravity->gravity_sync(crse_level, fine_level, drho, dphi);
+#endif
+
+	// Update the gravitational energy fluxes.
+
+	if (update_sources_after_reflux) {
+
+	    for (int lev = fine_level; lev > crse_level; --lev) {
+
+		Castro& crse_lev = getLevel(lev - 1);
+		Castro& fine_lev = getLevel(lev);
+
+		reg = &fine_lev.gflux_reg;
+
+		reg->ClearInternalBorders(crse_lev.geom);
+
+		for (int i = 0; i < BL_SPACEDIM; ++i) {
+		    temp_fluxes.set(i, new MultiFab(crse_lev.gfluxes[i].boxArray(), crse_lev.gfluxes[i].nComp(), crse_lev.gfluxes[i].nGrow()));
+		    temp_fluxes[i].setVal(0.0);
+		}
+		for (OrientationIter fi; fi; ++fi) {
+		    const FabSet& fs = (*reg)[fi()];
+		    int idir = fi().coordDir();
+		    fs.copyTo(temp_fluxes[idir], 0, 0, 0, temp_fluxes[idir].nComp());
+		}
+		for (int i = 0; i < BL_SPACEDIM; ++i) {
+		    MultiFab::Add(crse_lev.gfluxes[i], temp_fluxes[i], 0, 0, crse_lev.gfluxes[i].nComp(), 0);
+		    temp_fluxes.clear(i);
+
+		}
+		reg->setVal(0.0);
+
+	    }
+
+	}
+
+    }
+
 #endif
 
     // Now subtract the new-time updates to the state data,
@@ -2196,11 +2252,6 @@ Castro::reflux(int crse_level, int fine_level)
     if (update_sources_after_reflux) {
 
 	for (int lev = fine_level; lev >= crse_level; --lev) {
-
-#ifdef GRAVITY
-	    if (do_grav)
-		getLevel(lev).fill_gfluxes();
-#endif
 
 	    MultiFab& S_new = getLevel(lev).get_new_data(State_Type);
 	    Real time = getLevel(lev).state[State_Type].curTime();
@@ -2700,18 +2751,18 @@ Castro::computeTemp(MultiFab& State)
   for (MFIter mfi(State,true); mfi.isValid(); ++mfi)
     {
       const Box& bx = mfi.growntilebox();
-      
+
 #ifdef RADIATION
       if (Radiation::do_real_eos == 0) {
 	temp.resize(bx);
 	temp.copy(State[mfi],bx,Eint,bx,0,1);
-	
+
 	ca_compute_temp_given_cv
 	  (bx.loVect(), bx.hiVect(), 
 	   BL_TO_FORTRAN(temp), 
 	   BL_TO_FORTRAN(State[mfi]),
 	   &Radiation::const_c_v, &Radiation::c_v_exp_m, &Radiation::c_v_exp_n);
-	
+
 	State[mfi].copy(temp,bx,0,bx,Temp,1);
       } else {
 #endif
@@ -3036,7 +3087,7 @@ Castro::check_for_nan(MultiFab& state, int check_ghost)
   if (check_ghost == 1) {
     ng = state.nComp();
   }
-  
+
   if (state.contains_nan(Density,state.nComp(),ng,true))
     {
       for (int i = 0; i < state.nComp(); i++)

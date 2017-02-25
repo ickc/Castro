@@ -93,7 +93,7 @@ Castro::construct_old_gravity(int amr_iteration, int amr_ncycle, int sub_iterati
 	    gravity->test_level_grad_phi_prev(level);
 
 	}
- 
+
     }
 
     // Define the old gravity vector.
@@ -233,20 +233,6 @@ void Castro::fill_gfluxes()
     MultiFab& grav_old = get_old_data(Gravity_Type);
     MultiFab& grav_new = get_new_data(Gravity_Type);
 #endif
-
-    // Set up gravitational energy fluxes.
-
-    gfluxes.clear();
-
-    for (int dir = 0; dir < BL_SPACEDIM; ++dir) {
-	gfluxes.set(dir, new MultiFab(getEdgeBoxArray(dir), 1, 0));
-	gfluxes[dir].setVal(0.0);
-    }
-
-    for (int dir = BL_SPACEDIM; dir < 3; ++dir) {
-	gfluxes.set(dir, new MultiFab(grids, 1, 0));
-	gfluxes[dir].setVal(0.0);
-    }
 
     // We don't need to do this for the non-conservative gravity options.
 
@@ -420,9 +406,5 @@ void Castro::construct_new_gravity_source(Real time, Real dt)
 
 	}
     }
-
-    // We no longer need the flux data.
-
-    gfluxes.clear();
 
 }
