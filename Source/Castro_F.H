@@ -556,6 +556,20 @@ extern "C"
 #ifdef SELF_GRAVITY
      const BL_FORT_FAB_ARG_3D(grav_old),
      const BL_FORT_FAB_ARG_3D(grav_new),
+#endif
+     const BL_FORT_FAB_ARG_3D(volume),
+     const BL_FORT_FAB_ARG_3D(gflux1),
+     const BL_FORT_FAB_ARG_3D(gflux2),
+     const BL_FORT_FAB_ARG_3D(gflux3),
+     BL_FORT_FAB_ARG_3D(source),
+     const Real* dx, const Real& dt, const Real* time);
+
+  void ca_gflux
+    (const int* lo, const int* hi,
+     const int* domlo, const int* domhi,
+#ifdef SELF_GRAVITY
+     const BL_FORT_FAB_ARG_3D(grav_old),
+     const BL_FORT_FAB_ARG_3D(grav_new),
      const BL_FORT_FAB_ARG_3D(gpo1),
      const BL_FORT_FAB_ARG_3D(gpo2),
      const BL_FORT_FAB_ARG_3D(gpo3),
@@ -563,12 +577,13 @@ extern "C"
      const BL_FORT_FAB_ARG_3D(gpn2),
      const BL_FORT_FAB_ARG_3D(gpn3),
 #endif
-     const BL_FORT_FAB_ARG_3D(volume),
-     BL_FORT_FAB_ARG_3D(xflux),
-     BL_FORT_FAB_ARG_3D(yflux),
-     BL_FORT_FAB_ARG_3D(zflux),
-     BL_FORT_FAB_ARG_3D(source),
-     const Real* dx, const Real& dt, const Real* time);
+     const BL_FORT_FAB_ARG_3D(flux1),
+     const BL_FORT_FAB_ARG_3D(flux2),
+     const BL_FORT_FAB_ARG_3D(flux3),
+     const BL_FORT_FAB_ARG_3D(gflux1),
+     const BL_FORT_FAB_ARG_3D(gflux2),
+     const BL_FORT_FAB_ARG_3D(gflux3),
+     const Real* dx);
 #endif
 
 #ifdef ROTATION

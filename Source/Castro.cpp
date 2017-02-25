@@ -392,6 +392,9 @@ Castro::Castro ()
 #ifdef RADIATION
     rad_fluxes(BL_SPACEDIM, PArrayManage),
 #endif
+#ifdef GRAVITY
+    gfluxes(3, PArrayManage),
+#endif
     old_sources(num_src, PArrayManage),
     new_sources(num_src, PArrayManage),
     prev_state(num_state_type, PArrayManage)
@@ -411,6 +414,9 @@ Castro::Castro (Amr&            papa,
     fluxes(3, PArrayManage),
 #ifdef RADIATION
     rad_fluxes(BL_SPACEDIM, PArrayManage),
+#endif
+#ifdef GRAVITY
+    gfluxes(3, PArrayManage),
 #endif
     old_sources(num_src, PArrayManage),
     new_sources(num_src, PArrayManage),
@@ -2173,7 +2179,7 @@ Castro::reflux(int crse_level, int fine_level)
 
 #ifdef SELF_GRAVITY
     if (do_grav && gravity->get_gravity_type() == "PoissonGrav" && gravity->NoSync() == 0)
-	    gravity->gravity_sync(crse_level, fine_level, drho, dphi);
+	gravity->gravity_sync(crse_level, fine_level, drho, dphi);
 #endif
 
     // Now subtract the new-time updates to the state data,
@@ -2190,6 +2196,11 @@ Castro::reflux(int crse_level, int fine_level)
     if (update_sources_after_reflux) {
 
 	for (int lev = fine_level; lev >= crse_level; --lev) {
+
+#ifdef GRAVITY
+	    if (do_grav)
+		getLevel(lev).fill_gfluxes();
+#endif
 
 	    MultiFab& S_new = getLevel(lev).get_new_data(State_Type);
 	    Real time = getLevel(lev).state[State_Type].curTime();

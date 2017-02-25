@@ -219,8 +219,122 @@ Castro::construct_new_gravity(int amr_iteration, int amr_ncycle, int sub_iterati
 
     }
 
+    // Calculate the flux of gravitational energy.
+
+    fill_gfluxes();
+
 }
 #endif
+
+void Castro::fill_gfluxes()
+{
+
+#ifdef SELF_GRAVITY
+    MultiFab& grav_old = get_old_data(Gravity_Type);
+    MultiFab& grav_new = get_new_data(Gravity_Type);
+#endif
+
+    // Set up gravitational energy fluxes.
+
+    gfluxes.clear();
+
+    for (int dir = 0; dir < BL_SPACEDIM; ++dir) {
+	gfluxes.set(dir, new MultiFab(getEdgeBoxArray(dir), 1, 0));
+	gfluxes[dir].setVal(0.0);
+    }
+
+    for (int dir = BL_SPACEDIM; dir < 3; ++dir) {
+	gfluxes.set(dir, new MultiFab(grids, 1, 0));
+	gfluxes[dir].setVal(0.0);
+    }
+
+    // We don't need to do this for the non-conservative gravity options.
+
+    if (grav_source_type != 4) return;
+
+    const Real* dx = geom.CellSize();
+    const int* domlo = geom.Domain().loVect();
+    const int* domhi = geom.Domain().hiVect();
+
+#ifdef SELF_GRAVITY
+    // Temporarily allocate edge-centered gravity arrays
+    // that we will send to Fortran.
+
+    PArray<MultiFab> grad_phi_prev(3);
+    PArray<MultiFab> grad_phi_curr(3);
+
+    for (int n = 0; n < BL_SPACEDIM; ++n) {
+	grad_phi_prev.set(n, new MultiFab(getEdgeBoxArray(n), 1, 0));
+	grad_phi_prev[n].setVal(0.0);
+
+	grad_phi_curr.set(n, new MultiFab(getEdgeBoxArray(n), 1, 0));
+	grad_phi_curr[n].setVal(0.0);
+    }
+
+    // For non-simulated dimensions, we'll do the same thing
+    // we do for the hydrodynamic fluxes array, which is to
+    // create a cell-centered array. This is done regardless
+    // of gravity type.
+
+    for (int n = BL_SPACEDIM; n < 3; ++n) {
+	grad_phi_prev.set(n, new MultiFab(grids, 1, 0));
+	grad_phi_prev[n].setVal(0.0);
+
+	grad_phi_curr.set(n, new MultiFab(grids, 1, 0));
+	grad_phi_curr[n].setVal(0.0);
+    }
+
+    // Now if we actually have Poisson gravity, copy the data over.
+
+    if (gravity->get_gravity_type() == "PoissonGrav") {
+
+	for (int n = 0; n < BL_SPACEDIM; ++n) {
+	    MultiFab::Copy(grad_phi_prev[n], gravity->get_grad_phi_prev(level)[n], 0, 0, 1, 0);
+	    MultiFab::Copy(grad_phi_curr[n], gravity->get_grad_phi_curr(level)[n], 0, 0, 1, 0);
+	}
+
+    }
+#endif
+
+#ifdef _OPENMP
+#pragma omp parallel
+#endif
+    {
+	for (MFIter mfi(get_new_data(State_Type), true); mfi.isValid(); ++mfi)
+	{
+
+	    const Box& bx = mfi.tilebox();
+
+	    ca_gflux(ARLIM_3D(bx.loVect()), ARLIM_3D(bx.hiVect()),
+	             ARLIM_3D(domlo), ARLIM_3D(domhi),
+#ifdef SELF_GRAVITY
+		     BL_TO_FORTRAN_3D(grav_old[mfi]),
+		     BL_TO_FORTRAN_3D(grav_new[mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_prev[0][mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_prev[1][mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_prev[2][mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_curr[0][mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_curr[1][mfi]),
+		     BL_TO_FORTRAN_3D(grad_phi_curr[2][mfi]),
+#endif
+		     BL_TO_FORTRAN_3D(fluxes[0][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[1][mfi]),
+		     BL_TO_FORTRAN_3D(fluxes[2][mfi]),
+		     BL_TO_FORTRAN_3D(gfluxes[0][mfi]),
+		     BL_TO_FORTRAN_3D(gfluxes[1][mfi]),
+		     BL_TO_FORTRAN_3D(gfluxes[2][mfi]),
+		     ZFILL(dx));
+
+	}
+
+    }
+
+#ifdef SELF_GRAVITY
+    grad_phi_prev.clear();
+    grad_phi_curr.clear();
+#endif
+
+}
 
 void Castro::construct_old_gravity_source(Real time, Real dt)
 {
@@ -277,44 +391,8 @@ void Castro::construct_new_gravity_source(Real time, Real dt)
     const int* domlo = geom.Domain().loVect();
     const int* domhi = geom.Domain().hiVect();
 
-    // Temporarily allocate edge-centered gravity arrays
-    // that we will send to Fortran.
-
-    PArray<MultiFab> grad_phi_prev(3);
-    PArray<MultiFab> grad_phi_curr(3);
-
-    for (int n = 0; n < BL_SPACEDIM; ++n) {
-	grad_phi_prev.set(n, new MultiFab(getEdgeBoxArray(n), 1, 0));
-	grad_phi_prev[n].setVal(0.0);
-
-	grad_phi_curr.set(n, new MultiFab(getEdgeBoxArray(n), 1, 0));
-	grad_phi_curr[n].setVal(0.0);
-    }
-
-    // For non-simulated dimensions, we'll do the same thing
-    // we do for the hydrodynamic fluxes array, which is to
-    // create a cell-centered array. This is done regardless
-    // of gravity type.
-
-    for (int n = BL_SPACEDIM; n < 3; ++n) {
-	grad_phi_prev.set(n, new MultiFab(grids, 1, 0));
-	grad_phi_prev[n].setVal(0.0);
-
-	grad_phi_curr.set(n, new MultiFab(grids, 1, 0));
-	grad_phi_curr[n].setVal(0.0);
-    }
-
-    // Now if we actually have Poisson gravity, copy the data over.
-
-#ifdef SELF_GRAVITY
-    if (gravity->get_gravity_type() == "PoissonGrav") {
-
-	for (int n = 0; n < BL_SPACEDIM; ++n) {
-	    MultiFab::Copy(grad_phi_prev[n], gravity->get_grad_phi_prev(level)[n], 0, 0, 1, 0);
-	    MultiFab::Copy(grad_phi_curr[n], gravity->get_grad_phi_curr(level)[n], 0, 0, 1, 0);
-	}
-
-    }
+#ifndef SELF_GRAVITY
+    fill_gfluxes();
 #endif
 
 #ifdef _OPENMP
@@ -332,24 +410,19 @@ void Castro::construct_new_gravity_source(Real time, Real dt)
 #ifdef SELF_GRAVITY
 			BL_TO_FORTRAN_3D(grav_old[mfi]),
 			BL_TO_FORTRAN_3D(grav_new[mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_prev[0][mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_prev[1][mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_prev[2][mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_curr[0][mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_curr[1][mfi]),
-			BL_TO_FORTRAN_3D(grad_phi_curr[2][mfi]),
 #endif
 			BL_TO_FORTRAN_3D(volume[mfi]),
-			BL_TO_FORTRAN_3D(fluxes[0][mfi]),
-			BL_TO_FORTRAN_3D(fluxes[1][mfi]),
-			BL_TO_FORTRAN_3D(fluxes[2][mfi]),
+			BL_TO_FORTRAN_3D(gfluxes[0][mfi]),
+			BL_TO_FORTRAN_3D(gfluxes[1][mfi]),
+			BL_TO_FORTRAN_3D(gfluxes[2][mfi]),
 			BL_TO_FORTRAN_3D(new_sources[grav_src][mfi]),
 			ZFILL(dx),dt,&time);
 
 	}
     }
 
-    grad_phi_prev.clear();
-    grad_phi_curr.clear();
+    // We no longer need the flux data.
+
+    gfluxes.clear();
 
 }

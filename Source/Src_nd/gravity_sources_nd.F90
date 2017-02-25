@@ -165,27 +165,19 @@ contains
 #ifdef SELF_GRAVITY
                          gold,go_lo,go_hi, &
                          gnew,gn_lo,gn_hi, &
-                         gpold1,gpo1_lo,gpo1_hi, &
-                         gpold2,gpo2_lo,gpo2_hi, &
-                         gpold3,gpo3_lo,gpo3_hi, &
-                         gpnew1,gpn1_lo,gpn1_hi, &
-                         gpnew2,gpn2_lo,gpn2_hi, &
-                         gpnew3,gpn3_lo,gpn3_hi, &
 #endif
                          vol,vol_lo,vol_hi, &
-                         flux1,f1_lo,f1_hi, &
-                         flux2,f2_lo,f2_hi, &
-                         flux3,f3_lo,f3_hi, &
+                         gflux1,gf1_lo,gf1_hi, &
+                         gflux2,gf2_lo,gf2_hi, &
+                         gflux3,gf3_lo,gf3_hi, &
                          source,sr_lo,sr_hi, &
                          dx,dt,time) bind(C, name="ca_corrgsrc")
 
     use bl_fort_module, only: rt => c_real
     use bl_constants_module, only: ZERO, FOURTH, HALF, ONE
     use mempool_module, only: bl_allocate, bl_deallocate
-    use meth_params_module, only: NVAR, URHO, UMX, UMZ, UEDEN, &
-                                  grav_source_type, gravity_type, get_g_from_phi
+    use meth_params_module, only: NVAR, URHO, UMX, UMZ, UEDEN, grav_source_type
     use prob_params_module, only: dg, center
-    use fundamental_constants_module, only: Gconst
     use castro_util_module, only: position
 #ifdef HYBRID_MOMENTUM
     use meth_params_module, only: UMR, UMP
@@ -205,17 +197,11 @@ contains
 #ifdef SELF_GRAVITY
     integer, intent(in)     :: go_lo(3), go_hi(3)
     integer, intent(in)     :: gn_lo(3), gn_hi(3)
-    integer, intent(in)     :: gpo1_lo(3), gpo1_hi(3)
-    integer, intent(in)     :: gpo2_lo(3), gpo2_hi(3)
-    integer, intent(in)     :: gpo3_lo(3), gpo3_hi(3)
-    integer, intent(in)     :: gpn1_lo(3), gpn1_hi(3)
-    integer, intent(in)     :: gpn2_lo(3), gpn2_hi(3)
-    integer, intent(in)     :: gpn3_lo(3), gpn3_hi(3)
 #endif
+    integer, intent(in)     :: gf1_lo(3), gf1_hi(3)
+    integer, intent(in)     :: gf2_lo(3), gf2_hi(3)
+    integer, intent(in)     :: gf3_lo(3), gf3_hi(3)
     integer, intent(in)     :: vol_lo(3), vol_hi(3)
-    integer, intent(in)     :: f1_lo(3), f1_hi(3)
-    integer, intent(in)     :: f2_lo(3), f2_hi(3)
-    integer, intent(in)     :: f3_lo(3), f3_hi(3)
 
     integer, intent(in)     :: sr_lo(3), sr_hi(3)
 
@@ -229,27 +215,17 @@ contains
 
     real(rt), intent(in)    :: gold(go_lo(1):go_hi(1),go_lo(2):go_hi(2),go_lo(3):go_hi(3),3)
     real(rt), intent(in)    :: gnew(gn_lo(1):gn_hi(1),gn_lo(2):gn_hi(2),gn_lo(3):gn_hi(3),3)
-
-    ! Edge centered gravitational acceleration
-
-    real(rt), intent(in)    :: gpold1(gpo1_lo(1):gpo1_hi(1),gpo1_lo(2):gpo1_hi(2),gpo1_lo(3):gpo1_hi(3))
-    real(rt), intent(in)    :: gpold2(gpo2_lo(1):gpo2_hi(1),gpo2_lo(2):gpo2_hi(2),gpo2_lo(3):gpo2_hi(3))
-    real(rt), intent(in)    :: gpold3(gpo3_lo(1):gpo3_hi(1),gpo3_lo(2):gpo3_hi(2),gpo3_lo(3):gpo3_hi(3))
-
-    real(rt), intent(in)    :: gpnew1(gpn1_lo(1):gpn1_hi(1),gpn1_lo(2):gpn1_hi(2),gpn1_lo(3):gpn1_hi(3))
-    real(rt), intent(in)    :: gpnew2(gpn2_lo(1):gpn2_hi(1),gpn2_lo(2):gpn2_hi(2),gpn2_lo(3):gpn2_hi(3))
-    real(rt), intent(in)    :: gpnew3(gpn3_lo(1):gpn3_hi(1),gpn3_lo(2):gpn3_hi(2),gpn3_lo(3):gpn3_hi(3))
 #endif
+
+    ! Flux of gravitational energy
+
+    real(rt), intent(inout) :: gflux1(gf1_lo(1):gf1_hi(1),gf1_lo(2):gf1_hi(2),gf1_lo(3):gf1_hi(3))
+    real(rt), intent(inout) :: gflux2(gf2_lo(1):gf2_hi(1),gf2_lo(2):gf2_hi(2),gf2_lo(3):gf2_hi(3))
+    real(rt), intent(inout) :: gflux3(gf3_lo(1):gf3_hi(1),gf3_lo(2):gf3_hi(2),gf3_lo(3):gf3_hi(3))
 
     ! Cell volume
 
     real(rt), intent(in)    :: vol(vol_lo(1):vol_hi(1),vol_lo(2):vol_hi(2),vol_lo(3):vol_hi(3))
-
-    ! Hydrodynamics fluxes
-
-    real(rt), intent(in)    :: flux1(f1_lo(1):f1_hi(1),f1_lo(2):f1_hi(2),f1_lo(3):f1_hi(3),NVAR)
-    real(rt), intent(in)    :: flux2(f2_lo(1):f2_hi(1),f2_lo(2):f2_hi(2),f2_lo(3):f2_hi(3),NVAR)
-    real(rt), intent(in)    :: flux3(f3_lo(1):f3_hi(1),f3_lo(2):f3_hi(2),f3_lo(3):f3_hi(3),NVAR)
 
     ! The source term to send back
 
@@ -275,10 +251,6 @@ contains
 
     real(rt) :: snew(NVAR)
 
-    real(rt), pointer :: gravx(:,:,:)
-    real(rt), pointer :: gravy(:,:,:)
-    real(rt), pointer :: gravz(:,:,:)
-
     Sr_old(:) = ZERO
     Sr_new(:) = ZERO
     Srcorr(:) = ZERO
@@ -293,107 +265,6 @@ contains
     ! 2: Modification of type 1 that updates the U before constructing SrEcorr
     ! 3: Puts all gravitational work into KE, not (rho e)
     ! 4: Conservative gravity approach (discussed in Katz et al. (2016), ApJ, 819, 94).
-
-    if (grav_source_type .eq. 4) then
-
-       ! Allocate space for time-centered, edge-centered gravity.
-
-       call bl_allocate(gravx, lo(1), hi(1)+1*dg(1), lo(2), hi(2), lo(3), hi(3))
-       gravx(:,:,:) = ZERO
-
-       call bl_allocate(gravy, lo(1), hi(1), lo(2), hi(2)+1*dg(2), lo(3), hi(3))
-       gravy(:,:,:) = ZERO
-
-       call bl_allocate(gravz, lo(1), hi(1), lo(2), hi(2), lo(3), hi(3)+1*dg(3))
-       gravz(:,:,:) = ZERO
-
-       ! Construct the gravity array. Note that for Poisson gravity,
-       ! grad(phi) is equal to -g. For non-Poisson gravity, the edge-centered
-       ! gravity array is not filled with valid data, so we must rely on the
-       ! cell-centered gravity and construct a second-order approximation.
-
-       do k = lo(3), hi(3)
-          do j = lo(2), hi(2)
-             do i = lo(1), hi(1)+1*dg(1)
-
-#ifdef SELF_GRAVITY
-                if (gravity_type == "PoissonGrav") then
-
-                   gravx(i,j,k) = -HALF * (gpold1(i,j,k) + gpnew1(i,j,k))
-
-                else
-
-                   gravx(i,j,k) = FOURTH * (gold(i,j,k,1) + gnew(i,j,k,1) + gold(i-1*dg(1),j,k,1) + gnew(i-1*dg(1),j,k,1))
-
-                endif
-#else
-                ! For constant gravity, the only contribution is from the direction the gravity is
-                ! pointing in (which, by convention, is the last spatial dimension).
-
-                if (dim .eq. 1) then
-
-                   gravx(i,j,k) = const_grav
-
-                endif
-#endif
-
-             enddo
-          enddo
-       enddo
-
-       do k = lo(3), hi(3)
-          do j = lo(2), hi(2)+1*dg(2)
-             do i = lo(1), hi(1)
-
-#ifdef SELF_GRAVITY
-                if (gravity_type == "PoissonGrav") then
-
-                   gravy(i,j,k) = -HALF * (gpold2(i,j,k) + gpnew2(i,j,k))
-
-                else
-
-                   gravy(i,j,k) = FOURTH * (gold(i,j,k,2) + gnew(i,j,k,2) + gold(i,j-1*dg(2),k,2) + gnew(i,j-1*dg(2),k,2))
-
-                endif
-#else
-                if (dim .eq. 2) then
-
-                   gravy(i,j,k) = const_grav
-
-                endif
-#endif
-
-             enddo
-          enddo
-       enddo
-
-       do k = lo(3), hi(3)+1*dg(3)
-          do j = lo(2), hi(2)
-             do i = lo(1), hi(1)
-
-#ifdef SELF_GRAVITY
-                if (gravity_type == "PoissonGrav") then
-
-                   gravz(i,j,k) = -HALF * (gpold3(i,j,k) + gpnew3(i,j,k))
-
-                else
-
-                   gravz(i,j,k) = FOURTH * (gold(i,j,k,3) + gnew(i,j,k,3) + gold(i,j,k-1*dg(3),3) + gnew(i,j,k-1*dg(3),3))
-
-                endif
-#else
-                if (dim .eq. 3) then
-
-                   gravz(i,j,k) = const_grav
-
-                endif
-#endif
-
-             enddo
-          enddo
-       enddo
-
-    endif
 
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
@@ -500,12 +371,9 @@ contains
                 ! so that we get the source term and not the actual update, which will
                 ! be applied later by multiplying by dt.
 
-                SrEcorr = SrEcorr + hdtInv * ( flux1(i        ,j,k,URHO) * gravx(i        ,j,k) * dx(1) + &
-                                               flux1(i+1*dg(1),j,k,URHO) * gravx(i+1*dg(1),j,k) * dx(1) + &
-                                               flux2(i,j        ,k,URHO) * gravy(i,j        ,k) * dx(2) + &
-                                               flux2(i,j+1*dg(2),k,URHO) * gravy(i,j+1*dg(2),k) * dx(2) + &
-                                               flux3(i,j,k        ,URHO) * gravz(i,j,k        ) * dx(3) + &
-                                               flux3(i,j,k+1*dg(3),URHO) * gravz(i,j,k+1*dg(3)) * dx(3) ) / vol(i,j,k)
+                SrEcorr = SrEcorr + hdtInv * ( gflux1(i,j,k) + gflux1(i+1*dg(1),j,k) + &
+                                               gflux2(i,j,k) + gflux2(i,j+1*dg(2),k) + &
+                                               gflux3(i,j,k) + gflux3(i,j,k+1*dg(3)) ) / vol(i,j,k)
 
              else
 
@@ -525,14 +393,200 @@ contains
        enddo
     enddo
 
-    if (grav_source_type .eq. 4) then
-
-       call bl_deallocate(gravx)
-       call bl_deallocate(gravy)
-       call bl_deallocate(gravz)
-
-    endif
-
   end subroutine ca_corrgsrc
+
+  ! :::
+  ! ::: ------------------------------------------------------------------
+  ! :::
+
+  subroutine ca_gflux(lo,hi,domlo,domhi, &
+#ifdef SELF_GRAVITY
+                      gold,go_lo,go_hi, &
+                      gnew,gn_lo,gn_hi, &
+                      gpold1,gpo1_lo,gpo1_hi, &
+                      gpold2,gpo2_lo,gpo2_hi, &
+                      gpold3,gpo3_lo,gpo3_hi, &
+                      gpnew1,gpn1_lo,gpn1_hi, &
+                      gpnew2,gpn2_lo,gpn2_hi, &
+                      gpnew3,gpn3_lo,gpn3_hi, &
+#endif
+                      flux1,f1_lo,f1_hi, &
+                      flux2,f2_lo,f2_hi, &
+                      flux3,f3_lo,f3_hi, &
+                      gflux1,gf1_lo,gf1_hi, &
+                      gflux2,gf2_lo,gf2_hi, &
+                      gflux3,gf3_lo,gf3_hi, &
+                      dx) bind(C, name="ca_gflux")
+
+    use bl_fort_module, only: rt => c_real
+    use bl_constants_module, only: ZERO, FOURTH, HALF
+    use meth_params_module, only: NVAR, URHO, gravity_type
+    use prob_params_module, only: dg
+#ifndef SELF_GRAVITY
+    use meth_params_module, only: const_grav
+    use prob_params_module, only: dim
+#endif
+
+    implicit none
+
+    integer, intent(in)     :: lo(3), hi(3)
+    integer, intent(in)     :: domlo(3), domhi(3)
+#ifdef SELF_GRAVITY
+    integer, intent(in)     :: go_lo(3), go_hi(3)
+    integer, intent(in)     :: gn_lo(3), gn_hi(3)
+    integer, intent(in)     :: gpo1_lo(3), gpo1_hi(3)
+    integer, intent(in)     :: gpo2_lo(3), gpo2_hi(3)
+    integer, intent(in)     :: gpo3_lo(3), gpo3_hi(3)
+    integer, intent(in)     :: gpn1_lo(3), gpn1_hi(3)
+    integer, intent(in)     :: gpn2_lo(3), gpn2_hi(3)
+    integer, intent(in)     :: gpn3_lo(3), gpn3_hi(3)
+#endif
+    integer, intent(in)     :: f1_lo(3), f1_hi(3)
+    integer, intent(in)     :: f2_lo(3), f2_hi(3)
+    integer, intent(in)     :: f3_lo(3), f3_hi(3)
+    integer, intent(in)     :: gf1_lo(3), gf1_hi(3)
+    integer, intent(in)     :: gf2_lo(3), gf2_hi(3)
+    integer, intent(in)     :: gf3_lo(3), gf3_hi(3)
+
+#ifdef SELF_GRAVITY
+    ! Old and new time gravitational acceleration
+
+    real(rt), intent(in)    :: gold(go_lo(1):go_hi(1),go_lo(2):go_hi(2),go_lo(3):go_hi(3),3)
+    real(rt), intent(in)    :: gnew(gn_lo(1):gn_hi(1),gn_lo(2):gn_hi(2),gn_lo(3):gn_hi(3),3)
+
+    ! Edge centered gravitational acceleration
+
+    real(rt), intent(in)    :: gpold1(gpo1_lo(1):gpo1_hi(1),gpo1_lo(2):gpo1_hi(2),gpo1_lo(3):gpo1_hi(3))
+    real(rt), intent(in)    :: gpold2(gpo2_lo(1):gpo2_hi(1),gpo2_lo(2):gpo2_hi(2),gpo2_lo(3):gpo2_hi(3))
+    real(rt), intent(in)    :: gpold3(gpo3_lo(1):gpo3_hi(1),gpo3_lo(2):gpo3_hi(2),gpo3_lo(3):gpo3_hi(3))
+
+    real(rt), intent(in)    :: gpnew1(gpn1_lo(1):gpn1_hi(1),gpn1_lo(2):gpn1_hi(2),gpn1_lo(3):gpn1_hi(3))
+    real(rt), intent(in)    :: gpnew2(gpn2_lo(1):gpn2_hi(1),gpn2_lo(2):gpn2_hi(2),gpn2_lo(3):gpn2_hi(3))
+    real(rt), intent(in)    :: gpnew3(gpn3_lo(1):gpn3_hi(1),gpn3_lo(2):gpn3_hi(2),gpn3_lo(3):gpn3_hi(3))
+#endif
+
+    ! Hydrodynamical fluxes
+
+    real(rt), intent(in)    :: flux1(f1_lo(1):f1_hi(1),f1_lo(2):f1_hi(2),f1_lo(3):f1_hi(3),NVAR)
+    real(rt), intent(in)    :: flux2(f2_lo(1):f2_hi(1),f2_lo(2):f2_hi(2),f2_lo(3):f2_hi(3),NVAR)
+    real(rt), intent(in)    :: flux3(f3_lo(1):f3_hi(1),f3_lo(2):f3_hi(2),f3_lo(3):f3_hi(3),NVAR)
+
+    ! Flux of gravitational energy
+
+    real(rt), intent(inout) :: gflux1(gf1_lo(1):gf1_hi(1),gf1_lo(2):gf1_hi(2),gf1_lo(3):gf1_hi(3))
+    real(rt), intent(inout) :: gflux2(gf2_lo(1):gf2_hi(1),gf2_lo(2):gf2_hi(2),gf2_lo(3):gf2_hi(3))
+    real(rt), intent(inout) :: gflux3(gf3_lo(1):gf3_hi(1),gf3_lo(2):gf3_hi(2),gf3_lo(3):gf3_hi(3))
+
+    real(rt), intent(in)    :: dx(3)
+
+    integer  :: i, j, k
+
+    real(rt) :: gx, gy, gz
+
+    ! Construct the gravity array. Note that for Poisson gravity,
+    ! grad(phi) is equal to -g. For non-Poisson gravity, the edge-centered
+    ! gravity array is not filled with valid data, so we must rely on the
+    ! cell-centered gravity and construct a second-order approximation.
+
+    do k = lo(3), hi(3)
+       do j = lo(2), hi(2)
+          do i = lo(1), hi(1)+1*dg(1)
+
+#ifdef SELF_GRAVITY
+             if (gravity_type == "PoissonGrav") then
+
+                gx = -HALF * (gpold1(i,j,k) + gpnew1(i,j,k))
+
+             else
+
+                gx = FOURTH * (gold(i,j,k,1) + gnew(i,j,k,1) + gold(i-1*dg(1),j,k,1) + gnew(i-1*dg(1),j,k,1))
+
+             endif
+#else
+             ! For constant gravity, the only contribution is from the direction the gravity is
+             ! pointing in (which, by convention, is the last spatial dimension).
+
+             if (dim .eq. 1) then
+
+                gx = const_grav
+
+             else
+
+                gx = ZERO
+
+             endif
+#endif
+
+             gflux1(i,j,k) = flux1(i,j,k,URHO) * gx * dx(1)
+
+          enddo
+       enddo
+    enddo
+
+    do k = lo(3), hi(3)
+       do j = lo(2), hi(2)+1*dg(2)
+          do i = lo(1), hi(1)
+
+#ifdef SELF_GRAVITY
+             if (gravity_type == "PoissonGrav") then
+
+                gy = -HALF * (gpold2(i,j,k) + gpnew2(i,j,k))
+
+             else
+
+                gy = FOURTH * (gold(i,j,k,2) + gnew(i,j,k,2) + gold(i,j-1*dg(2),k,2) + gnew(i,j-1*dg(2),k,2))
+
+             endif
+#else
+             if (dim .eq. 2) then
+
+                gy = const_grav
+
+             else
+
+                gy = ZERO
+
+             endif
+#endif
+
+             gflux2(i,j,k) = flux2(i,j,k,URHO) * gy * dx(2)
+
+          enddo
+       enddo
+    enddo
+
+    do k = lo(3), hi(3)+1*dg(3)
+       do j = lo(2), hi(2)
+          do i = lo(1), hi(1)
+
+#ifdef SELF_GRAVITY
+             if (gravity_type == "PoissonGrav") then
+
+                gz = -HALF * (gpold3(i,j,k) + gpnew3(i,j,k))
+
+             else
+
+                gz = FOURTH * (gold(i,j,k,3) + gnew(i,j,k,3) + gold(i,j,k-1*dg(3),3) + gnew(i,j,k-1*dg(3),3))
+
+             endif
+#else
+             if (dim .eq. 3) then
+
+                gz = const_grav
+
+             else
+
+                gz = ZERO
+
+             endif
+#endif
+
+             gflux3(i,j,k) = flux3(i,j,k,URHO) * gz * dx(3)
+
+          enddo
+       enddo
+    enddo
+
+  end subroutine ca_gflux
 
 end module gravity_sources_module

@@ -200,10 +200,6 @@ public:
     //
     MultiFab& Volume ();
     //
-    // Return the n'th fluxes MultiFab.
-    //
-    MultiFab& Fluxes (int dir);
-    //
     // Set time levels of state data.
     //
     virtual void setTimeLevel (Real time,
@@ -299,6 +295,8 @@ public:
 			       int sub_iteration, int sub_ncycle,
 			       Real time);
 #endif
+    void fill_gfluxes();
+
     void construct_old_gravity_source(Real time, Real dt);
 
     void construct_new_gravity_source(Real time, Real dt);
@@ -600,6 +598,9 @@ protected:
 #endif
 #ifdef RADIATION
     PArray<MultiFab> rad_fluxes;
+#endif
+#ifdef GRAVITY
+    PArray<MultiFab> gfluxes;
 #endif
 
     FluxRegister flux_reg;
