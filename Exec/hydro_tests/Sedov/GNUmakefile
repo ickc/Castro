@@ -20,7 +20,7 @@ EOS_dir     := gamma_law
 Network_dir := general_null
 GENERAL_NET_INPUTS = $(CASTRO_HOME)/Microphysics/networks/$(Network_dir)/gammalaw.net
 
-Bpack   := ./Make.package
-Blocs   := .
+Bpack   := $(CASTRO_HOME)/Exec/hydro_tests/Sedov/Make.package
+Blocs   := $(CASTRO_HOME)/Exec/hydro_tests/Sedov/
 
 include $(CASTRO_HOME)/Exec/Make.Castro
