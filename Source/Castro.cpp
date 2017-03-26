@@ -2205,6 +2205,16 @@ Castro::reflux(int crse_level, int fine_level)
 
 	if (update_sources_after_reflux) {
 
+	    for (int lev = crse_level; lev <= fine_level; ++lev) {
+		getLevel(lev).fill_gfluxes();
+		for (int i = 0; i < BL_SPACEDIM; ++i) {
+		    if (lev < parent->finestLevel())
+			getLevel(lev+1).gflux_reg.CrseInit(getLevel(lev).gfluxes[i], i, 0, 0, 1, flux_crse_scale);
+		    if (lev > 0)
+			getLevel(lev).gflux_reg.FineAdd(getLevel(lev).gfluxes[i], i, 0, 0, 1, flux_fine_scale);
+		}
+	    }
+
 	    for (int lev = fine_level; lev > crse_level; --lev) {
 
 		Castro& crse_lev = getLevel(lev - 1);

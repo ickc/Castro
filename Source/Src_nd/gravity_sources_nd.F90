@@ -165,11 +165,16 @@ contains
 #ifdef SELF_GRAVITY
                          gold,go_lo,go_hi, &
                          gnew,gn_lo,gn_hi, &
+                         pold,po_lo,po_hi, &
+                         pnew,pn_lo,pn_hi, &
 #endif
                          vol,vol_lo,vol_hi, &
                          gflux1,gf1_lo,gf1_hi, &
                          gflux2,gf2_lo,gf2_hi, &
                          gflux3,gf3_lo,gf3_hi, &
+                         flux1,f1_lo,f1_hi, &
+                         flux2,f2_lo,f2_hi, &
+                         flux3,f3_lo,f3_hi, &
                          source,sr_lo,sr_hi, &
                          dx,dt,time) bind(C, name="ca_corrgsrc")
 
@@ -179,6 +184,7 @@ contains
     use meth_params_module, only: NVAR, URHO, UMX, UMZ, UEDEN, grav_source_type
     use prob_params_module, only: dg, center
     use castro_util_module, only: position
+    use amrinfo_module, only: amr_level
 #ifdef HYBRID_MOMENTUM
     use meth_params_module, only: UMR, UMP
     use hybrid_advection_module, only: set_hybrid_momentum_source
@@ -197,10 +203,15 @@ contains
 #ifdef SELF_GRAVITY
     integer, intent(in)     :: go_lo(3), go_hi(3)
     integer, intent(in)     :: gn_lo(3), gn_hi(3)
+    integer, intent(in)     :: po_lo(3), po_hi(3)
+    integer, intent(in)     :: pn_lo(3), pn_hi(3)
 #endif
     integer, intent(in)     :: gf1_lo(3), gf1_hi(3)
     integer, intent(in)     :: gf2_lo(3), gf2_hi(3)
     integer, intent(in)     :: gf3_lo(3), gf3_hi(3)
+    integer, intent(in)     :: f1_lo(3), f1_hi(3)
+    integer, intent(in)     :: f2_lo(3), f2_hi(3)
+    integer, intent(in)     :: f3_lo(3), f3_hi(3)
     integer, intent(in)     :: vol_lo(3), vol_hi(3)
 
     integer, intent(in)     :: sr_lo(3), sr_hi(3)
@@ -215,6 +226,11 @@ contains
 
     real(rt), intent(in)    :: gold(go_lo(1):go_hi(1),go_lo(2):go_hi(2),go_lo(3):go_hi(3),3)
     real(rt), intent(in)    :: gnew(gn_lo(1):gn_hi(1),gn_lo(2):gn_hi(2),gn_lo(3):gn_hi(3),3)
+
+    ! Old and new time gravitational potential
+
+    real(rt), intent(in)    :: pold(po_lo(1):po_hi(1),po_lo(2):po_hi(2),po_lo(3):po_hi(3))
+    real(rt), intent(in)    :: pnew(pn_lo(1):pn_hi(1),pn_lo(2):pn_hi(2),pn_lo(3):pn_hi(3))
 #endif
 
     ! Flux of gravitational energy
@@ -222,6 +238,10 @@ contains
     real(rt), intent(inout) :: gflux1(gf1_lo(1):gf1_hi(1),gf1_lo(2):gf1_hi(2),gf1_lo(3):gf1_hi(3))
     real(rt), intent(inout) :: gflux2(gf2_lo(1):gf2_hi(1),gf2_lo(2):gf2_hi(2),gf2_lo(3):gf2_hi(3))
     real(rt), intent(inout) :: gflux3(gf3_lo(1):gf3_hi(1),gf3_lo(2):gf3_hi(2),gf3_lo(3):gf3_hi(3))
+
+    real(rt), intent(inout) :: flux1(f1_lo(1):f1_hi(1),f1_lo(2):f1_hi(2),f1_lo(3):f1_hi(3),NVAR)
+    real(rt), intent(inout) :: flux2(f2_lo(1):f2_hi(1),f2_lo(2):f2_hi(2),f2_lo(3):f2_hi(3),NVAR)
+    real(rt), intent(inout) :: flux3(f3_lo(1):f3_hi(1),f3_lo(2):f3_hi(2),f3_lo(3):f3_hi(3),NVAR)
 
     ! Cell volume
 
@@ -352,28 +372,20 @@ contains
 
                 SrEcorr = - SrE_old
 
-                ! The change in the gas energy is equal in magnitude to, and opposite in sign to,
-                ! the change in the gravitational potential energy, rho * phi.
-                ! This must be true for the total energy, rho * E_gas + rho * phi, to be conserved.
-                ! Consider as an example the zone interface i+1/2 in between zones i and i + 1.
-                ! There is an amount of mass drho_{i+1/2} leaving the zone. From this zone's perspective
-                ! it starts with a potential phi_i and leaves the zone with potential phi_{i+1/2} =
-                ! (1/2) * (phi_{i-1}+phi_{i}). Therefore the new rotational energy is equal to the mass
-                ! change multiplied by the difference between these two potentials.
-                ! This is a generalization of the cell-centered approach implemented in
-                ! the other source options, which effectively are equal to
-                ! SrEcorr = - drho(i,j,k) * phi(i,j,k),
-                ! where drho(i,j,k) = HALF * (unew(i,j,k,URHO) - uold(i,j,k,URHO)).
+                ! For an explanation of this approach, see wdmerger paper I.
+                ! The main idea is that we are evaluating the change of the
+                ! potential energy at zone edges and applying that in an equal
+                ! and opposite sense to the gas energy. The physics is described
+                ! in Section 2.4; the particular form of the equation we are using
+                ! is found in Appendix B, as it provides the best numerical conservation
+                ! properties when using AMR.
 
-                ! Note that in the hydrodynamics step, the fluxes used here were already
-                ! multiplied by dA and dt, so dividing by the cell volume is enough to
-                ! get the density change (flux * dt * dA / dV). We then divide by dt
-                ! so that we get the source term and not the actual update, which will
-                ! be applied later by multiplying by dt.
+                ! NOTE: the current code does not work for non-Poisson gravity.
 
-                SrEcorr = SrEcorr + hdtInv * ( gflux1(i,j,k) + gflux1(i+1*dg(1),j,k) + &
-                                               gflux2(i,j,k) + gflux2(i,j+1*dg(2),k) + &
-                                               gflux3(i,j,k) + gflux3(i,j,k+1*dg(3)) ) / vol(i,j,k)
+                SrEcorr = SrEcorr + (ONE / dt) * ((gflux1(i,j,k) - gflux1(i+1*dg(1),j,k) + &
+                                                   gflux2(i,j,k) - gflux2(i,j+1*dg(2),k) + &
+                                                   gflux3(i,j,k) - gflux3(i,j,k+1*dg(3))) / vol(i,j,k) - &
+                                                   (rhon - rhoo) * HALF * (pold(i,j,k) + pnew(i,j,k)))
 
              else
 
@@ -403,6 +415,8 @@ contains
 #ifdef SELF_GRAVITY
                       gold,go_lo,go_hi, &
                       gnew,gn_lo,gn_hi, &
+                      pold,po_lo,po_hi, &
+                      pnew,pn_lo,pn_hi, &
                       gpold1,gpo1_lo,gpo1_hi, &
                       gpold2,gpo2_lo,gpo2_hi, &
                       gpold3,gpo3_lo,gpo3_hi, &
@@ -434,6 +448,8 @@ contains
 #ifdef SELF_GRAVITY
     integer, intent(in)     :: go_lo(3), go_hi(3)
     integer, intent(in)     :: gn_lo(3), gn_hi(3)
+    integer, intent(in)     :: po_lo(3), po_hi(3)
+    integer, intent(in)     :: pn_lo(3), pn_hi(3)
     integer, intent(in)     :: gpo1_lo(3), gpo1_hi(3)
     integer, intent(in)     :: gpo2_lo(3), gpo2_hi(3)
     integer, intent(in)     :: gpo3_lo(3), gpo3_hi(3)
@@ -453,6 +469,11 @@ contains
 
     real(rt), intent(in)    :: gold(go_lo(1):go_hi(1),go_lo(2):go_hi(2),go_lo(3):go_hi(3),3)
     real(rt), intent(in)    :: gnew(gn_lo(1):gn_hi(1),gn_lo(2):gn_hi(2),gn_lo(3):gn_hi(3),3)
+
+    ! Old and new time gravitational potential
+
+    real(rt), intent(in)    :: pold(po_lo(1):po_hi(1),po_lo(2):po_hi(2),po_lo(3):po_hi(3))
+    real(rt), intent(in)    :: pnew(pn_lo(1):pn_hi(1),pn_lo(2):pn_hi(2),pn_lo(3):pn_hi(3))
 
     ! Edge centered gravitational acceleration
 
@@ -495,7 +516,7 @@ contains
 #ifdef SELF_GRAVITY
              if (gravity_type == "PoissonGrav") then
 
-                gx = -HALF * (gpold1(i,j,k) + gpnew1(i,j,k))
+                gx = FOURTH * (pold(i,j,k) + pnew(i,j,k) + pold(i-1*dg(1),j,k) + pnew(i-1*dg(1),j,k))
 
              else
 
@@ -517,7 +538,7 @@ contains
              endif
 #endif
 
-             gflux1(i,j,k) = flux1(i,j,k,URHO) * gx * dx(1)
+             gflux1(i,j,k) = flux1(i,j,k,URHO) * gx
 
           enddo
        enddo
@@ -530,7 +551,7 @@ contains
 #ifdef SELF_GRAVITY
              if (gravity_type == "PoissonGrav") then
 
-                gy = -HALF * (gpold2(i,j,k) + gpnew2(i,j,k))
+                gy = FOURTH * (pold(i,j,k) + pnew(i,j,k) + pold(i,j-1*dg(2),k) + pnew(i,j-1*dg(2),k))
 
              else
 
@@ -549,7 +570,7 @@ contains
              endif
 #endif
 
-             gflux2(i,j,k) = flux2(i,j,k,URHO) * gy * dx(2)
+             gflux2(i,j,k) = flux2(i,j,k,URHO) * gy
 
           enddo
        enddo
@@ -562,7 +583,7 @@ contains
 #ifdef SELF_GRAVITY
              if (gravity_type == "PoissonGrav") then
 
-                gz = -HALF * (gpold3(i,j,k) + gpnew3(i,j,k))
+                gz = FOURTH * (pold(i,j,k) + pnew(i,j,k) + pold(i,j,k-1*dg(3)) + pnew(i,j,k-1*dg(3)))
 
              else
 
@@ -581,7 +602,7 @@ contains
              endif
 #endif
 
-             gflux3(i,j,k) = flux3(i,j,k,URHO) * gz * dx(3)
+             gflux3(i,j,k) = flux3(i,j,k,URHO) * gz
 
           enddo
        enddo

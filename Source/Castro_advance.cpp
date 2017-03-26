@@ -553,18 +553,6 @@ Castro::finalize_advance(Real time, Real dt, int amr_iteration, int amr_ncycle)
 	}
 #endif
 
-#ifdef GRAVITY
-	if (do_grav) {
-	    for (int i = 0; i < BL_SPACEDIM; ++i) {
-		if (level < parent->finestLevel())
-		    getLevel(level+1).gflux_reg.CrseInit(gfluxes[i], i, 0, 0, 1, flux_crse_scale);
-		if (level > 0)
-		    getLevel(level).gflux_reg.FineAdd(gfluxes[i], i, 0, 0, 1, flux_fine_scale);
-	    }
-	}
-#endif
-
-
     }
 
     Real cur_time = state[State_Type].curTime();

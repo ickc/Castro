@@ -556,11 +556,16 @@ extern "C"
 #ifdef SELF_GRAVITY
      const BL_FORT_FAB_ARG_3D(grav_old),
      const BL_FORT_FAB_ARG_3D(grav_new),
+     const BL_FORT_FAB_ARG_3D(phi_old),
+     const BL_FORT_FAB_ARG_3D(phi_new),
 #endif
      const BL_FORT_FAB_ARG_3D(volume),
      const BL_FORT_FAB_ARG_3D(gflux1),
      const BL_FORT_FAB_ARG_3D(gflux2),
      const BL_FORT_FAB_ARG_3D(gflux3),
+     const BL_FORT_FAB_ARG_3D(flux1),
+     const BL_FORT_FAB_ARG_3D(flux2),
+     const BL_FORT_FAB_ARG_3D(flux3),
      BL_FORT_FAB_ARG_3D(source),
      const Real* dx, const Real& dt, const Real* time);
 
@@ -570,6 +575,8 @@ extern "C"
 #ifdef SELF_GRAVITY
      const BL_FORT_FAB_ARG_3D(grav_old),
      const BL_FORT_FAB_ARG_3D(grav_new),
+     const BL_FORT_FAB_ARG_3D(phi_old),
+     const BL_FORT_FAB_ARG_3D(phi_new),
      const BL_FORT_FAB_ARG_3D(gpo1),
      const BL_FORT_FAB_ARG_3D(gpo2),
      const BL_FORT_FAB_ARG_3D(gpo3),

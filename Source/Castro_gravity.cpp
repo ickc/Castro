@@ -232,6 +232,8 @@ void Castro::fill_gfluxes()
 #ifdef SELF_GRAVITY
     MultiFab& grav_old = get_old_data(Gravity_Type);
     MultiFab& grav_new = get_new_data(Gravity_Type);
+    MultiFab& phi_old = get_old_data(PhiGrav_Type);
+    MultiFab& phi_new = get_new_data(PhiGrav_Type);
 #endif
 
     // We don't need to do this for the non-conservative gravity options.
@@ -296,6 +298,8 @@ void Castro::fill_gfluxes()
 #ifdef SELF_GRAVITY
 		     BL_TO_FORTRAN_3D(grav_old[mfi]),
 		     BL_TO_FORTRAN_3D(grav_new[mfi]),
+		     BL_TO_FORTRAN_3D(phi_old[mfi]),
+		     BL_TO_FORTRAN_3D(phi_new[mfi]),
 		     BL_TO_FORTRAN_3D(grad_phi_prev[0][mfi]),
 		     BL_TO_FORTRAN_3D(grad_phi_prev[1][mfi]),
 		     BL_TO_FORTRAN_3D(grad_phi_prev[2][mfi]),
@@ -367,6 +371,8 @@ void Castro::construct_new_gravity_source(Real time, Real dt)
 #ifdef SELF_GRAVITY
     MultiFab& grav_old = get_old_data(Gravity_Type);
     MultiFab& grav_new = get_new_data(Gravity_Type);
+    MultiFab& phi_old = get_old_data(PhiGrav_Type);
+    MultiFab& phi_new = get_new_data(PhiGrav_Type);
 #endif
 
     new_sources[grav_src].setVal(0.0);
@@ -396,11 +402,16 @@ void Castro::construct_new_gravity_source(Real time, Real dt)
 #ifdef SELF_GRAVITY
 			BL_TO_FORTRAN_3D(grav_old[mfi]),
 			BL_TO_FORTRAN_3D(grav_new[mfi]),
+			BL_TO_FORTRAN_3D(phi_old[mfi]),
+			BL_TO_FORTRAN_3D(phi_new[mfi]),
 #endif
 			BL_TO_FORTRAN_3D(volume[mfi]),
 			BL_TO_FORTRAN_3D(gfluxes[0][mfi]),
 			BL_TO_FORTRAN_3D(gfluxes[1][mfi]),
 			BL_TO_FORTRAN_3D(gfluxes[2][mfi]),
+			BL_TO_FORTRAN_3D(fluxes[0][mfi]),
+			BL_TO_FORTRAN_3D(fluxes[1][mfi]),
+			BL_TO_FORTRAN_3D(fluxes[2][mfi]),
 			BL_TO_FORTRAN_3D(new_sources[grav_src][mfi]),
 			ZFILL(dx),dt,&time);
 
