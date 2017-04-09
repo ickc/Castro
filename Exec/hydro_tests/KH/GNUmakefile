@@ -1,8 +1,8 @@
 # Define the location of the CASTRO top directory,
 # if not already defined by an environment variable.
 
-CASTRO_HOME := ../../..
-
+CASTRO_HOME := /project/projectdirs/astro250/GitCode/Castro
+BOXLIB_HOME := /project/projectdirs/astro250/GitCode/BoxLib
 # Location of this directory. Useful if
 # you're trying to compile this from another location.
 
@@ -17,7 +17,7 @@ DIM        ?= 2
 
 COMP	   ?= gnu
 
-USE_MPI    ?= FALSE
+USE_MPI    ?= TRUE
 USE_OMP    ?= FALSE
 
 DIMENSION_AGNOSTIC = TRUE
