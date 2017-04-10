@@ -5,11 +5,11 @@ stop_time = 8.0
 geometry.is_periodic = 1   1
 geometry.coord_sys   = 0        # 0 => cart, 1 => RZ  2=>spherical
 geometry.prob_lo     = 0.0 0.0
-geometry.prob_hi     = 1.0 2.0
-castro.center        = 0.5 1.0
+geometry.prob_hi     = 16.0 9.0
+castro.center        = 8.0 4.5
 
-amr.n_cell           = 256 512
-amr.max_level        = 0        # maximum level number allowed; base level is 0
+amr.n_cell           = 3840 2160
+amr.max_level        = 2        # maximum level number allowed; base level is 0
 
 amr.max_grid_size    = 64
 
@@ -56,7 +56,7 @@ amr.check_per       = 1.0       # number of timesteps between checkpoints
 # PLOTFILES
 amr.plot_files_output = 1
 amr.plot_file       = plt       # root name of plotfile
-amr.plot_per        = 0.1       # time between plotfiles
+amr.plot_per        = 0.04170837504 # time between plotfiles
 
 amr.plot_vars = ALL 
 amr.derive_plot_vars = NONE
