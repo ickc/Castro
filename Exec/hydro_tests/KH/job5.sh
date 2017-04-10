@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH -N 1
+#SBATCH -N 32
 #SBATCH -C haswell
 #SBATCH -p debug
-#SBATCH -J Castro-KH-problem-3
-#SBATCH -t 00:10:00
+#SBATCH -J Castro-KH-problem-5
+#SBATCH -t 00:30:00
 
 #OpenMP settings:
 export OMP_NUM_THREADS=1
@@ -12,4 +12,4 @@ export OMP_PROC_BIND=spread
 
 
 #run the application:
-srun -n 32 -c 2 --cpu_bind=cores ./Castro2d.gnu.MPI.ex inputs.2d.p5
+srun -n 1024 -c 2 --cpu_bind=cores ./Castro2d.gnu.MPI.ex inputs.2d.p5
